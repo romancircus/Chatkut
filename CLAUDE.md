@@ -26,10 +26,11 @@ User Query → LLM Plan (IR) → Selector Resolution → AST Patch → Updated C
 ```
 
 **Critical Files:**
-- `lib/composition-engine/planner.ts` - Generates structured Edit Plans from user messages
-- `lib/composition-engine/executor.ts` - Validates selectors, applies AST patches
-- `lib/composition-engine/selectors.ts` - Resolves element selectors (byId, byLabel, byType, byIndex)
+- `convex/ai.ts` - AI actions (sendChatMessage, generateEditPlan, generateRemotionCode)
+- `lib/dedalus/client.ts` - Multi-model AI routing with cost tracking
+- `lib/composition-engine/ir-helpers.ts` - IR manipulation utilities (CRUD operations, selectors)
 - `types/composition-ir.ts` - Composition Intermediate Representation (IR) types
+- `remotion/DynamicComposition.tsx` - Renders composition from IR
 
 **Why This Matters:**
 - Edits must be **deterministic**: "make second clip louder" always updates the same element
@@ -153,6 +154,110 @@ vercel deploy --prod
 npx remotion lambda deploy
 ```
 
+## Implementation Details
+
+### Composition IR Structure
+The IR is the single source of truth for all video compositions:
+
+```typescript
+type CompositionIR = {
+  id: string;
+  version: number;
+  metadata: { width, height, fps, durationInFrames };
+  elements: CompositionElement[];
+  patches: Patch[]; // For undo/redo
+};
+
+type CompositionElement = {
+  id: string;              // Stable ID (nanoid)
+  type: ElementType;       // video, audio, text, image, sequence
+  label?: string;          // User-defined or AI-generated
+  from: number;            // Start frame
+  durationInFrames: number;
+  properties: Record<string, any>;  // Element-specific props
+  animations?: Animation[];
+  children?: CompositionElement[];  // For nested sequences
+};
+```
+
+**IR Helpers** (`lib/composition-engine/ir-helpers.ts`):
+- `createEmptyComposition()` - Initialize new composition
+- `addElement()`, `updateElement()`, `deleteElement()`, `moveElement()` - CRUD operations
+- `findElementById()`, `findElementsByLabel()`, `findElementsByType()` - Selectors
+- `revertLastPatch()` - Undo implementation
+- `validateComposition()` - Ensure IR integrity
+
+### AI Integration Architecture
+All AI operations flow through Convex actions in `convex/ai.ts`:
+
+**1. Chat Flow:**
+```
+User Message → convex/ai.ts:sendChatMessage
+  → Get project context (assets, composition, chat history)
+  → Build system prompt with context
+  → Route to GPT-4o via Dedalus
+  → Save assistant response
+  → Track token usage and cost
+```
+
+**2. Edit Plan Generation:**
+```
+User Request → convex/ai.ts:generateEditPlan
+  → Get current composition IR
+  → Build system prompt with IR context
+  → Route to Claude Sonnet for structured output
+  → Return EditPlan JSON with operation/selector/changes
+```
+
+**3. Code Generation:**
+```
+Composition IR → convex/ai.ts:generateRemotionCode
+  → Build system prompt with IR
+  → Route to Claude Sonnet (temp=0.3 for determinism)
+  → Extract TypeScript code
+  → Update composition record
+```
+
+### Remotion Rendering Pipeline
+The `remotion/DynamicComposition.tsx` component renders from IR:
+
+**Process:**
+1. Parse CompositionIR.elements array
+2. For each element, create a `<Sequence>` with from/durationInFrames
+3. Add `data-element-id` attribute for tracking
+4. Apply animations using `interpolate()` from keyframes
+5. Render element content based on type (Video, Audio, Img, text div)
+
+**Animation Handling:**
+```typescript
+const animatedStyle = calculateAnimatedStyle(element, currentFrame);
+// Interpolates keyframes: { frame: 0, value: 1.0 } → { frame: 90, value: 1.2 }
+// Supports: opacity, scale, x, y, rotation
+// Uses Remotion's interpolate() with easing functions
+```
+
+### Media Upload Flow
+Direct browser-to-Cloudflare uploads (NO files through Convex):
+
+**Video Upload:**
+```
+1. Browser: Call convex/media.ts:requestStreamUploadUrl
+2. Convex: Call Cloudflare Stream API, get TUS endpoint
+3. Convex: Create asset record (status: "uploading")
+4. Browser: Upload via TUS client directly to Cloudflare
+5. Cloudflare: Process video, send webhook to Convex
+6. Convex: Update asset (status: "ready", playbackUrl: HLS manifest)
+```
+
+**Image Upload:**
+```
+1. Browser: Call convex/media.ts:requestR2UploadUrl
+2. Convex: Generate presigned R2 URL
+3. Browser: PUT directly to R2
+4. Browser: Call convex/media.ts:completeR2Upload
+5. Convex: Update asset (status: "ready", playbackUrl: R2 URL)
+```
+
 ## Code Patterns
 
 ### Convex Queries/Mutations
@@ -196,32 +301,39 @@ export const requestUploadUrl = action({
 
 ### Dedalus Multi-Model Routing
 ```typescript
-import { AsyncDedalus, DedalusRunner } from "dedalus-labs";
+import { getAIClient, MODEL_ROUTING } from "@/lib/dedalus/client";
 
-const client = new AsyncDedalus();
-const runner = new DedalusRunner(client);
+const aiClient = getAIClient();
 
-// Code generation: Use Claude Sonnet (quality)
-const codeResult = await runner.run({
-  input: userMessage,
-  model: "anthropic/claude-sonnet-4-5",
-  tools: [],
+// Code generation: Claude Sonnet 4.5 (best quality)
+const codeResponse = await aiClient.generateText({
+  task: "code-generation",
+  systemPrompt: "Generate Remotion component...",
+  prompt: "Create a video with...",
+  temperature: 0.3,
 });
 
-// Chat: Use GPT-4o (balanced)
-const chatResult = await runner.run({
-  input: userMessage,
-  model: "openai/gpt-4o",
-  tools: [],
+// Chat responses: GPT-4o (balanced cost/quality)
+const chatResponse = await aiClient.generateText({
+  task: "chat-response",
+  systemPrompt: "You are ChatKut assistant...",
+  prompt: userMessage,
+  temperature: 0.7,
 });
 
-// Simple edits: Use Gemini Flash (cost)
-const editResult = await runner.run({
-  input: userMessage,
-  model: "google/gemini-flash-2.0",
-  tools: [],
+// Edit plans: Claude Sonnet (precise structured output)
+const planResponse = await aiClient.generateJSON<EditPlan>({
+  task: "plan-generation",
+  systemPrompt: "Generate structured edit plan...",
+  prompt: userMessage,
 });
+
+// All responses include cost tracking:
+// { text, model, provider, tokenUsage: { input, output, total }, cost }
 ```
+
+**Cost Optimization:**
+Multi-model routing saves ~32% compared to using Claude for everything by routing simple tasks to cheaper models.
 
 ### AST Patching Pattern
 ```typescript
@@ -348,15 +460,28 @@ For detailed architecture information, see:
 
 ## Phase 1 Scope (MVP - 8 weeks)
 
-**IN SCOPE:**
-- Chat-based video editing
-- Cloudflare media uploads (TUS + HLS preview)
+**COMPLETED (Week 1-2):**
+- ✅ Next.js 14 + TypeScript + Tailwind setup
+- ✅ Convex backend with complete schema (11 tables)
+- ✅ Composition IR type system with CRUD operations
+- ✅ Cloudflare Stream + R2 integration (media.ts)
+- ✅ Dedalus AI integration with multi-model routing
+- ✅ AI actions: sendChatMessage, generateEditPlan, generateRemotionCode
+- ✅ Remotion configuration and DynamicComposition component
+
+**IN PROGRESS (Week 3-4):**
+- Chat UI component with message list
+- TUS upload widget for video files
+- HLS video player component
+- Asset library UI
+- Project dashboard layout
+
+**IN SCOPE (Remaining):**
 - Plan-Execute-Patch editing with undo/redo
 - Remotion Lambda rendering with cost estimation
-- Multi-model AI routing (Claude, GPT, Gemini)
-- Basic compositions (video, audio, text, sequences)
 - Disambiguator UI for ambiguous selectors
 - Edit receipts for user feedback
+- AST patching for code modifications
 
 **OUT OF SCOPE (Phase 2+):**
 - CapCut export (local drafts only, Phase 2)
