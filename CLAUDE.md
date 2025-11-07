@@ -1,0 +1,385 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+ChatKut is an open-source chat-based video editor that provides a natural language interface for video editing. It uses Remotion for video rendering, Dedalus SDK for multi-model AI orchestration, and implements a deterministic Plan-Execute-Patch editing architecture.
+
+## Core Architecture
+
+### Tech Stack
+- **Frontend**: Next.js 14 + React 18 + Tailwind CSS
+- **Backend**: Convex (metadata, real-time sync, auth)
+- **Media Storage**: Cloudflare Stream (video uploads/HLS preview) + R2 (storage)
+- **AI Layer**: Dedalus SDK (multi-model routing + MCP tool integration)
+- **Video Rendering**: Remotion + Remotion Lambda
+- **Export**: CapCut MCP server (Phase 2 - local drafts only)
+
+### Key Design Decisions
+
+#### 1. Plan-Execute-Patch Editing (NOT Full Code Regeneration)
+The system uses a **deterministic editing pipeline** instead of regenerating full Remotion code for every edit:
+
+```
+User Query → LLM Plan (IR) → Selector Resolution → AST Patch → Updated Code
+```
+
+**Critical Files:**
+- `lib/composition-engine/planner.ts` - Generates structured Edit Plans from user messages
+- `lib/composition-engine/executor.ts` - Validates selectors, applies AST patches
+- `lib/composition-engine/selectors.ts` - Resolves element selectors (byId, byLabel, byType, byIndex)
+- `types/composition-ir.ts` - Composition Intermediate Representation (IR) types
+
+**Why This Matters:**
+- Edits must be **deterministic**: "make second clip louder" always updates the same element
+- Every edit creates a reversible **Patch** for undo/redo
+- Use **Babel AST manipulation** to modify specific parts of Remotion code
+- Elements have stable IDs tracked via `data-element-id` JSX attributes
+
+#### 2. Media Storage Architecture
+**CRITICAL**: Convex has ~20MB HTTP action limits and 100MB file size limits.
+
+**Storage Rules:**
+- **Convex**: ONLY metadata (asset records, chat messages, composition IR, patches)
+- **Cloudflare Stream**: Video/audio uploads (TUS resumable, HLS preview)
+- **Cloudflare R2**: Images, rendered MP4s (direct HTTPS URLs)
+
+**Upload Flow:**
+```
+Browser → Request signed URL (Convex) → Direct TUS upload (Cloudflare) → Webhook (Convex) → HLS ready
+```
+
+**Never** upload media files through Convex actions. Always use direct Cloudflare uploads.
+
+#### 3. MCP Security (Backend Proxy Required)
+Dedalus MCP auth is not yet supported. **All MCP calls MUST go through Convex backend proxy:**
+
+```typescript
+// convex/mcpProxy.ts
+export const callMCPTool = action({
+  handler: async (ctx, { toolName, parameters, userId }) => {
+    // 1. Enforce auth
+    // 2. Rate limit (10 calls/min per user)
+    // 3. Sanitize parameters (no secrets)
+    // 4. Call Dedalus SDK
+    // 5. Log usage
+  }
+});
+```
+
+**Security Requirements:**
+- Per-user authentication required
+- Rate limiting: 10 calls/min (Free), 50/min (Pro)
+- Sanitize tool arguments (remove apiKey, token, password, secret fields)
+- Audit log for billing and security
+
+#### 4. Remotion Licensing & Cost Tracking
+**DO NOT hard-code costs.** Use Remotion's `estimatePrice()` API:
+
+```typescript
+import { estimatePrice } from "@remotion/lambda/client";
+
+// Before render: show estimate
+const estimate = await estimatePrice({
+  region: "us-east-1",
+  durationInFrames,
+  memorySizeInMb: 2048,
+  diskSizeInMb: 2048,
+  lambdaEfficiencyLevel: 0.8,
+});
+
+// After render: record actual cost for telemetry
+await recordActualCost({ renderId, actualCost, renderTime });
+```
+
+**License Compliance:**
+- Free: Individuals or orgs with ≤3 employees
+- Company License required for 4+ employees
+- Block renders if non-compliant
+- Link to https://remotion.dev/pricing
+
+## Development Commands
+
+### Setup
+```bash
+# Install dependencies
+npm install
+
+# Set up Convex
+npx convex dev
+
+# Set up environment variables
+cp .env.example .env.local
+# Add: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, DEDALUS_API_KEY
+```
+
+### Development
+```bash
+# Run dev server (Next.js + Convex)
+npm run dev
+
+# Run Convex functions locally
+npx convex dev
+
+# Type check
+npm run type-check
+
+# Lint
+npm run lint
+```
+
+### Testing
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm test -- path/to/test.spec.ts
+
+# Run tests in watch mode
+npm test -- --watch
+```
+
+### Deployment
+```bash
+# Deploy Convex backend
+npx convex deploy
+
+# Deploy Next.js frontend (Vercel)
+vercel deploy --prod
+
+# Deploy Remotion Lambda bundle
+npx remotion lambda deploy
+```
+
+## Code Patterns
+
+### Convex Queries/Mutations
+```typescript
+// convex/compositions.ts
+import { mutation, query } from "./_generated/server";
+
+export const get = query({
+  handler: async (ctx, { compositionId }) => {
+    return await ctx.db.get(compositionId);
+  },
+});
+
+export const update = mutation({
+  handler: async (ctx, { compositionId, changes }) => {
+    await ctx.db.patch(compositionId, changes);
+  },
+});
+```
+
+### Convex Actions (for external API calls)
+```typescript
+// convex/media.ts
+import { action } from "./_generated/server";
+
+export const requestUploadUrl = action({
+  handler: async (ctx, { projectId, filename }) => {
+    // Call external API (Cloudflare)
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/stream/direct_upload`,
+      { /* ... */ }
+    );
+
+    // Store metadata in Convex
+    await ctx.runMutation(api.assets.create, { /* ... */ });
+
+    return result;
+  },
+});
+```
+
+### Dedalus Multi-Model Routing
+```typescript
+import { AsyncDedalus, DedalusRunner } from "dedalus-labs";
+
+const client = new AsyncDedalus();
+const runner = new DedalusRunner(client);
+
+// Code generation: Use Claude Sonnet (quality)
+const codeResult = await runner.run({
+  input: userMessage,
+  model: "anthropic/claude-sonnet-4-5",
+  tools: [],
+});
+
+// Chat: Use GPT-4o (balanced)
+const chatResult = await runner.run({
+  input: userMessage,
+  model: "openai/gpt-4o",
+  tools: [],
+});
+
+// Simple edits: Use Gemini Flash (cost)
+const editResult = await runner.run({
+  input: userMessage,
+  model: "google/gemini-flash-2.0",
+  tools: [],
+});
+```
+
+### AST Patching Pattern
+```typescript
+import * as Babel from "@babel/core";
+import traverse from "@babel/traverse";
+
+// Parse Remotion code
+const ast = Babel.parse(code, {
+  sourceType: "module",
+  plugins: ["jsx", "typescript"],
+});
+
+// Find element by data-element-id
+traverse(ast, {
+  JSXOpeningElement(path) {
+    const idAttr = path.node.attributes.find(
+      attr => attr.name?.name === "data-element-id"
+    );
+
+    if (idAttr?.value?.value === targetElementId) {
+      // Apply patch to this element
+    }
+  },
+});
+
+// Generate new code
+const { code: newCode } = Babel.transformFromAstSync(ast, code, {
+  presets: ["@babel/preset-typescript", "@babel/preset-react"],
+});
+```
+
+## Critical Implementation Notes
+
+### Element Selectors
+When implementing edit operations, selectors MUST be unambiguous:
+
+- `{ type: "byId", id: "elem_123" }` - Most precise
+- `{ type: "byLabel", label: "Intro Video" }` - User-friendly
+- `{ type: "byType", elementType: "video", index: 1 }` - Positional (e.g., "second clip")
+- `{ type: "byIndex", index: 0 }` - Top-level elements only
+
+**If selector matches 0 elements:** Return error with suggestions
+**If selector matches 1 element:** Proceed with edit
+**If selector matches 2+ elements:** Show disambiguator UI
+
+### Undo/Redo Stack
+Every edit must create a Patch object:
+```typescript
+type Patch = {
+  id: string;
+  timestamp: number;
+  operation: "add" | "update" | "delete" | "move";
+  selector: ElementSelector;
+  changes: any;
+  previousState?: any; // For undo
+};
+```
+
+Undo: Revert last patch and regenerate code
+Redo: Reapply patch from redo stack
+
+### Edit Receipts
+After every successful edit, generate a user-friendly receipt:
+```
+✓ Updated video "Intro.mp4":
+  - Added zoom animation (1.0x → 1.2x over 3s)
+```
+
+Include an undo button for instant reversal.
+
+## File Organization
+
+```
+chatkut/
+├── app/                    # Next.js 14 app router
+│   ├── (auth)/            # Auth pages (login, signup)
+│   ├── (dashboard)/       # Main app pages
+│   └── api/               # API routes (webhooks)
+├── components/            # React components
+│   ├── chat/             # Chat interface components
+│   ├── editor/           # Video editor UI
+│   ├── player/           # HLS + Remotion players
+│   └── upload/           # TUS upload widget
+├── convex/               # Convex backend
+│   ├── _generated/       # Generated types
+│   ├── schema.ts         # Database schema
+│   ├── compositions.ts   # Composition CRUD
+│   ├── media.ts          # Cloudflare integration
+│   ├── mcpProxy.ts       # MCP backend proxy
+│   ├── rendering.ts      # Remotion Lambda
+│   └── auth.ts           # Authentication
+├── lib/                  # Shared utilities
+│   ├── composition-engine/
+│   │   ├── planner.ts    # Edit plan generation
+│   │   ├── executor.ts   # AST patching
+│   │   ├── selectors.ts  # Selector resolution
+│   │   └── compiler.ts   # IR → Remotion code
+│   ├── dedalus/          # Dedalus SDK wrappers
+│   └── utils/            # Helpers
+├── types/                # TypeScript types
+│   └── composition-ir.ts # IR type definitions
+└── remotion/             # Remotion compositions
+    └── templates/        # Starter templates
+```
+
+## Architecture References
+
+For detailed architecture information, see:
+- `chatkut-prd-v3.1-production-ready.md` - Complete PRD with all design decisions
+- Section 1: Media Storage Strategy - Cloudflare integration
+- Section 2: MCP Security Posture - Backend proxy implementation
+- Section 3: Remotion Costs & Licensing - Dynamic cost tracking
+- Section 5: Deterministic Editing - Plan-Execute-Patch architecture
+
+## Key Constraints
+
+1. **No media files through Convex** - Use Cloudflare direct uploads only
+2. **All MCP calls via backend proxy** - Never expose MCP tokens to frontend
+3. **Deterministic editing** - Use Plan-Execute-Patch, not full code regeneration
+4. **Cost transparency** - Always show estimates before renders
+5. **License compliance** - Check org size before rendering
+6. **Multi-model optimization** - Route to appropriate model based on task
+7. **Undo/redo support** - Every edit must be reversible
+
+## Phase 1 Scope (MVP - 8 weeks)
+
+**IN SCOPE:**
+- Chat-based video editing
+- Cloudflare media uploads (TUS + HLS preview)
+- Plan-Execute-Patch editing with undo/redo
+- Remotion Lambda rendering with cost estimation
+- Multi-model AI routing (Claude, GPT, Gemini)
+- Basic compositions (video, audio, text, sequences)
+- Disambiguator UI for ambiguous selectors
+- Edit receipts for user feedback
+
+**OUT OF SCOPE (Phase 2+):**
+- CapCut export (local drafts only, Phase 2)
+- Real-time collaboration
+- Template library
+- Advanced effects (Canvas, WebGL)
+- Mobile app
+- Bulk operations
+
+## Testing Strategy
+
+### Must Test
+- **Upload resumability**: 1GB video upload interrupted and resumed
+- **Edit determinism**: "make second clip louder" always selects same element
+- **Undo/redo**: Every edit is reversible
+- **Cost accuracy**: Render estimates within ±20% of actual
+- **Security**: MCP rate limits enforced
+- **Ambiguity handling**: Multiple matches show disambiguator UI
+- **Preview latency**: P95 edit→preview <5 seconds
+- **Plan validity**: >90% of selectors resolve correctly
+
+### Test Data
+- Use sample videos from Cloudflare Stream test assets
+- Test with 1MB, 100MB, 1GB video files
+- Test ambiguous queries ("make the video louder" with 3 videos)
+- Test complex compositions (10+ elements)
