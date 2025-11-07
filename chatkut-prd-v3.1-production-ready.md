@@ -1,4 +1,4 @@
-# ChatKut PRD v3.1 - Production-Ready Architecture
+# ChatKut OPEN SOURCE PRD v3.1 - Production-Ready Architecture
 
 ## Document Changes from v3.0
 
@@ -20,7 +20,7 @@
 
 **Product Name:** ChatKut
 
-**Vision:** A standalone web application that provides a natural language interface for video editing, powered by Remotion for video rendering with optional CapCut draft export. Built on Dedalus SDK for universal AI model access and MCP tool integration. Uses **deterministic plan-execute-patch editing** instead of full code regeneration.
+**Vision:** An open source standalone web application that provides a natural language interface for video editing, powered by Remotion for video rendering with optional CapCut draft export. Built on Dedalus SDK for universal AI model access and MCP tool integration. Uses **deterministic plan-execute-patch editing** instead of full code regeneration.
 
 **Key Innovation:** First chat-based video editor with:
 - Multi-model AI optimization (32% cost savings)
@@ -95,7 +95,7 @@
 
 ### 1. Media Storage Strategy (FIXED)
 
-**Problem Identified:** Convex has ~20MB HTTP action limits; 100MB file limit insufficient for video.
+**Problem Identified:** Convex has \~20MB HTTP action limits; 100MB file limit insufficient for video.
 
 **Solution:** Cloudflare Stream + R2 for all media; Convex for metadata only.
 
@@ -124,15 +124,15 @@
 
 #### Storage Breakdown
 
-| Data Type | Storage | Max Size | Why |
-|-----------|---------|----------|-----|
-| User uploads (video/audio) | Cloudflare Stream | 30GB | HLS preview, no transcode wait |
-| User uploads (images) | Cloudflare R2 | 5GB | Direct HTTPS URLs |
-| Rendered MP4s | Cloudflare R2 | 10GB | Signed delivery URLs |
-| Asset metadata | Convex | 1KB each | Fast queries, real-time sync |
-| Remotion code | Convex | ~10KB each | Version history |
-| Edit patches | Convex | ~1KB each | Undo/redo |
-| Chat messages | Convex | ~500B each | Real-time chat |
+| Data Type                  | Storage           | Max Size    | Why                            |
+| -------------------------- | ----------------- | ----------- | ------------------------------ |
+| User uploads (video/audio) | Cloudflare Stream | 30GB        | HLS preview, no transcode wait |
+| User uploads (images)      | Cloudflare R2     | 5GB         | Direct HTTPS URLs              |
+| Rendered MP4s              | Cloudflare R2     | 10GB        | Signed delivery URLs           |
+| Asset metadata             | Convex            | 1KB each    | Fast queries, real-time sync   |
+| Remotion code              | Convex            | \~10KB each | Version history                |
+| Edit patches               | Convex            | \~1KB each  | Undo/redo                      |
+| Chat messages              | Convex            | \~500B each | Real-time chat                 |
 
 #### Implementation
 
@@ -242,11 +242,11 @@ export function VideoUpload({ projectId }) {
 
 **Cost Comparison:**
 
-| Solution | Upload | Storage | Preview | Rendering |
-|----------|--------|---------|---------|-----------|
-| Convex Only | ❌ 20MB limit | ❌ 100MB/file | ❌ No HLS | N/A |
-| **Cloudflare** | ✅ 30GB/file | ✅ Unlimited | ✅ Instant HLS | ✅ Direct URLs |
-| Mux | ✅ Good | ✅ Good | ✅ Instant HLS | ✅ Good |
+| Solution       | Upload       | Storage      | Preview       | Rendering     |
+| -------------- | ------------ | ------------ | ------------- | ------------- |
+| Convex Only    | ❌ 20MB limit | ❌ 100MB/file | ❌ No HLS      | N/A           |
+| **Cloudflare** | ✅ 30GB/file  | ✅ Unlimited  | ✅ Instant HLS | ✅ Direct URLs |
+| Mux            | ✅ Good       | ✅ Good       | ✅ Instant HLS | ✅ Good        |
 
 **Recommendation:** **Cloudflare Stream + R2** (better pricing, same features as Mux)
 
@@ -256,9 +256,9 @@ export function VideoUpload({ projectId }) {
 - Uploads: Free
 
 **Estimated Monthly Cost (100 users):**
-- Stream: ~$10-20/month
-- R2: ~$5-10/month
-- Total: **~$15-30/month**
+- Stream: \~$10-20/month
+- R2: \~$5-10/month
+- Total: **\~$15-30/month**
 
 ---
 
@@ -539,18 +539,18 @@ Our Approach:
 
 **Supported Mapping (Remotion → CapCut):**
 
-| Remotion Feature | CapCut Draft | Status |
-|-----------------|--------------|--------|
-| `<Sequence>` timeline | Track/timeline | ✅ Supported |
-| `<Video>` components | Video layers | ✅ Supported |
-| Text with basic styles | Text layers | ✅ Supported |
-| `<Audio>` components | Audio tracks | ✅ Supported |
-| Volume adjustments | Volume keyframes | ✅ Supported |
-| Opacity interpolate | Alpha keyframes | ✅ Supported |
-| Basic transitions | Fade in/out | ✅ Supported |
-| Spring animations | ⚠️ Approximated | ⚠️ Limited |
-| Canvas effects | ❌ Not mapped | ❌ Phase 3 |
-| WebGL/3D | ❌ Not possible | ❌ Never |
+| Remotion Feature       | CapCut Draft     | Status      |
+| ---------------------- | ---------------- | ----------- |
+| `<Sequence>` timeline  | Track/timeline   | ✅ Supported |
+| `<Video>` components   | Video layers     | ✅ Supported |
+| Text with basic styles | Text layers      | ✅ Supported |
+| `<Audio>` components   | Audio tracks     | ✅ Supported |
+| Volume adjustments     | Volume keyframes | ✅ Supported |
+| Opacity interpolate    | Alpha keyframes  | ✅ Supported |
+| Basic transitions      | Fade in/out      | ✅ Supported |
+| Spring animations      | ⚠️ Approximated  | ⚠️ Limited  |
+| Canvas effects         | ❌ Not mapped     | ❌ Phase 3   |
+| WebGL/3D               | ❌ Not possible   | ❌ Never     |
 
 **System Requirements:**
 
@@ -1157,23 +1157,25 @@ Element Tracking:
 ### Yes, Keep Convex for Everything Except Media Files
 
 **What Convex Handles (Perfectly):**
-| Data Type | Why Convex? |
-|-----------|-------------|
-| ✅ Asset Metadata | Fast queries, real-time sync |
-| ✅ Chat Messages | Instant delivery via WebSockets |
-| ✅ Composition IR | Version control, undo/redo |
-| ✅ Edit Patches | Ordered lists, atomic updates |
-| ✅ User Data | Auth, subscriptions, settings |
-| ✅ Project State | Real-time collaboration ready |
-| ✅ Render Jobs | Queue management, status tracking |
+
+| Data Type        | Why Convex?                       |
+| ---------------- | --------------------------------- |
+| ✅ Asset Metadata | Fast queries, real-time sync      |
+| ✅ Chat Messages  | Instant delivery via WebSockets   |
+| ✅ Composition IR | Version control, undo/redo        |
+| ✅ Edit Patches   | Ordered lists, atomic updates     |
+| ✅ User Data      | Auth, subscriptions, settings     |
+| ✅ Project State  | Real-time collaboration ready     |
+| ✅ Render Jobs    | Queue management, status tracking |
 
 **What Cloudflare Handles:**
-| Data Type | Why Cloudflare? |
-|-------------|-----------------|
-| ✅ Video Files | TUS resumable, HLS instant preview |
-| ✅ Audio Files | Direct URLs for Remotion |
-| ✅ Images | CDN delivery, optimized |
-| ✅ Rendered MP4s | Large files, signed delivery |
+
+| Data Type       | Why Cloudflare?                    |
+| --------------- | ---------------------------------- |
+| ✅ Video Files   | TUS resumable, HLS instant preview |
+| ✅ Audio Files   | Direct URLs for Remotion           |
+| ✅ Images        | CDN delivery, optimized            |
+| ✅ Rendered MP4s | Large files, signed delivery       |
 
 ### Architecture Diagram (Final)
 
@@ -1225,70 +1227,70 @@ Element Tracking:
 
 ### Cost Breakdown (100 Users)
 
-| Service | Purpose | Monthly Cost |
-|---------|---------|--------------|
-| **Convex** | Metadata, real-time, auth | $25 |
-| **Cloudflare Stream** | Video uploads, HLS preview | $15 |
-| **Cloudflare R2** | Storage (images, MP4s) | $10 |
-| **Vercel** | Next.js hosting | $20 |
-| **Dedalus** | AI orchestration | $50-100 |
-| **Remotion Lambda** | Rendering | $50-100 |
-| **Remotion License** | Company license | $25/mo |
-| **Multi-Model AI** | Code gen, chat | $340 |
-| **Total** | | **$535-635/month** |
+| Service               | Purpose                    | Monthly Cost       |
+| --------------------- | -------------------------- | ------------------ |
+| **Convex**            | Metadata, real-time, auth  | $25                |
+| **Cloudflare Stream** | Video uploads, HLS preview | $15                |
+| **Cloudflare R2**     | Storage (images, MP4s)     | $10                |
+| **Vercel**            | Next.js hosting            | $20                |
+| **Dedalus**           | AI orchestration           | $50-100            |
+| **Remotion Lambda**   | Rendering                  | $50-100            |
+| **Remotion License**  | Company license            | $25/mo             |
+| **Multi-Model AI**    | Code gen, chat             | $340               |
+| **Total**             |                            | **$535-635/month** |
 
 **vs Single Stack (e.g., Mux):**
 - Similar cost
 - More flexibility
 - Better for your use case
-- Cloudflare free egress saves $$
+- Cloudflare free egress saves $%$
 
 ### Why This Stack Wins
 
 1. **Convex Strengths:**
-   - Real-time by default (perfect for chat, preview updates)
-   - TypeScript end-to-end
-   - Automatic data sync
-   - Built-in auth
-   - Perfect for <20MB data
+   2. Real-time by default (perfect for chat, preview updates)
+   3. TypeScript end-to-end
+   4. Automatic data sync
+   5. Built-in auth
+   6. Perfect for \<20MB data
 
 2. **Cloudflare Strengths:**
-   - Best-in-class video ingress (TUS)
-   - Instant HLS preview (no transcode wait)
-   - Free egress (R2)
-   - Global CDN
-   - Lower cost than Mux
+   2. Best-in-class video ingress (TUS)
+   3. Instant HLS preview (no transcode wait)
+   4. Free egress (R2)
+   5. Global CDN
+   6. Lower cost than Mux
 
 3. **Clean Separation:**
-   - Convex = Application state
-   - Cloudflare = Media delivery
-   - No overlapping responsibilities
+   2. Convex = Application state
+   3. Cloudflare = Media delivery
+   4. No overlapping responsibilities
 
 4. **Developer Experience:**
-   - One codebase (Convex actions handle both)
-   - TypeScript everywhere
-   - No complex media pipeline
-   - Webhook integration is simple
+   2. One codebase (Convex actions handle both)
+   3. TypeScript everywhere
+   4. No complex media pipeline
+   5. Webhook integration is simple
 
 ### Migration from v3.0
 
 **Changes Needed:**
 
 1. **Remove from Convex:**
-   - File upload endpoints → Replace with Cloudflare signed URLs
-   - File storage usage → Move to R2
+   2. File upload endpoints → Replace with Cloudflare signed URLs
+   3. File storage usage → Move to R2
 
 2. **Add to Cloudflare:**
-   - Stream account setup
-   - R2 bucket creation
-   - Webhook endpoints in Convex
+   2. Stream account setup
+   3. R2 bucket creation
+   4. Webhook endpoints in Convex
 
 3. **Update Frontend:**
-   - Replace file input with TUS uploader
-   - Switch video player to HLS
-   - Add upload progress UI
+   2. Replace file input with TUS uploader
+   3. Switch video player to HLS
+   4. Add upload progress UI
 
-**Effort:** ~3-5 days
+**Effort:** \~3-5 days
 
 ---
 
@@ -1395,9 +1397,9 @@ Before launching ChatKut MVP, validate:
 ### ✅ Media Pipeline
 - [ ] 1GB video uploads resume via TUS if interrupted
 - [ ] Cloudflare webhook flips asset status to "ready"
-- [ ] HLS preview loads <2 seconds after upload complete
+- [ ] HLS preview loads \<2 seconds after upload complete
 - [ ] Asset metadata appears in Convex real-time
-- [ ] No files >20MB transit through Convex
+- [ ] No files \>20MB transit through Convex
 
 ### ✅ Editing Determinism
 - [ ] User says "make second clip zoom out slowly"
@@ -1420,7 +1422,7 @@ Before launching ChatKut MVP, validate:
 - [ ] Rate limit: 10 calls/min per user (tested)
 - [ ] No secrets in tool arguments (sanitization tested)
 - [ ] CapCut export behind Pro subscription gate
-- [ ] Draft .zip outputs correctly (dfd_xxxxx folder)
+- [ ] Draft .zip outputs correctly (dfd\_xxxxx folder)
 
 ### ✅ Multi-Model Optimization
 - [ ] Code generation uses Claude Sonnet (quality)
@@ -1431,8 +1433,8 @@ Before launching ChatKut MVP, validate:
 - [ ] 30%+ cost savings vs single-model validated
 
 ### ✅ User Experience
-- [ ] Chat responds <2 seconds for simple queries
-- [ ] Preview updates <3 seconds after edit
+- [ ] Chat responds \<2 seconds for simple queries
+- [ ] Preview updates \<3 seconds after edit
 - [ ] Upload progress shows percentage
 - [ ] Ambiguity dialog appears when needed (multiple matches)
 - [ ] Edit receipts show after each operation
@@ -1441,29 +1443,29 @@ Before launching ChatKut MVP, validate:
 
 ### ✅ Performance
 - [ ] Preview plays smoothly (HLS buffer management)
-- [ ] Edit→preview latency P95 <5 seconds
-- [ ] Plan validity rate >90% (selectors resolve correctly)
+- [ ] Edit→preview latency P95 \<5 seconds
+- [ ] Plan validity rate \>90% (selectors resolve correctly)
 - [ ] Render estimation accuracy ±20%
-- [ ] Page load <2 seconds
-- [ ] Real-time updates via Convex <500ms
+- [ ] Page load \<2 seconds
+- [ ] Real-time updates via Convex \<500ms
 
 ---
 
 ## Summary of Changes (v3.0 → v3.1)
 
-| Category | v3.0 | v3.1 (Fixed) |
-|----------|------|--------------|
-| **Media Storage** | Convex (❌ 20MB limit) | Cloudflare Stream + R2 ✅ |
-| **Upload Method** | HTTP POST | TUS resumable ✅ |
-| **Preview** | Not specified | HLS instant playback ✅ |
-| **MCP Auth** | "Secure via Dedalus" | Backend proxy until auth ships ✅ |
-| **Render Costs** | Fixed "$0.005/min" | Dynamic estimatePrice() ✅ |
-| **License** | Fixed "$299/year" | Link to official pricing ✅ |
-| **CapCut Export** | Assumed cloud | Local drafts only (scoped) ✅ |
-| **Editing** | Full code regen | Plan-Execute-Patch (IR) ✅ |
-| **Undo/Redo** | Not specified | Patch-based with full history ✅ |
-| **Receipts** | Not specified | After every edit with details ✅ |
-| **Ambiguity** | Not handled | Disambiguator UI ✅ |
+| Category          | v3.0                  | v3.1 (Fixed)                     |
+| ----------------- | --------------------- | -------------------------------- |
+| **Media Storage** | Convex (❌ 20MB limit) | Cloudflare Stream + R2 ✅         |
+| **Upload Method** | HTTP POST             | TUS resumable ✅                  |
+| **Preview**       | Not specified         | HLS instant playback ✅           |
+| **MCP Auth**      | "Secure via Dedalus"  | Backend proxy until auth ships ✅ |
+| **Render Costs**  | Fixed "$0.005/min"    | Dynamic estimatePrice() ✅        |
+| **License**       | Fixed "$299/year"     | Link to official pricing ✅       |
+| **CapCut Export** | Assumed cloud         | Local drafts only (scoped) ✅     |
+| **Editing**       | Full code regen       | Plan-Execute-Patch (IR) ✅        |
+| **Undo/Redo**     | Not specified         | Patch-based with full history ✅  |
+| **Receipts**      | Not specified         | After every edit with details ✅  |
+| **Ambiguity**     | Not handled           | Disambiguator UI ✅               |
 
 ---
 
