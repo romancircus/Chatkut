@@ -25,7 +25,11 @@ export const requestStreamUploadUrl = action({
     filename: v.string(),
     fileSize: v.optional(v.number()),
   },
-  handler: async (ctx, { projectId, filename, fileSize }) => {
+  handler: async (ctx, { projectId, filename, fileSize }): Promise<{
+    assetId: any;
+    uploadUrl: string;
+    streamId: string;
+  }> => {
     // Call Cloudflare Stream API to get TUS upload URL
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`,
@@ -86,7 +90,7 @@ export const handleStreamWebhook = action({
     duration: v.optional(v.number()),
     thumbnail: v.optional(v.string()),
   },
-  handler: async (ctx, { uid, status, playback, duration, thumbnail }) => {
+  handler: async (ctx, { uid, status, playback, duration, thumbnail }): Promise<void> => {
     if (status === "ready") {
       // Update asset with playback URL and duration
       await ctx.runMutation(api.media.updateAssetByStreamId, {
@@ -117,7 +121,11 @@ export const requestR2UploadUrl = action({
     mimeType: v.string(),
     type: v.union(v.literal("image"), v.literal("rendered")),
   },
-  handler: async (ctx, { projectId, filename, fileSize, mimeType, type }) => {
+  handler: async (ctx, { projectId, filename, fileSize, mimeType, type }): Promise<{
+    assetId: any;
+    uploadUrl: string;
+    r2Key: string;
+  }> => {
     // Generate unique R2 key
     const timestamp = Date.now();
     const r2Key = `${projectId}/${timestamp}-${filename}`;
@@ -301,7 +309,7 @@ export const deleteAsset = action({
   args: {
     assetId: v.id("assets"),
   },
-  handler: async (ctx, { assetId }) => {
+  handler: async (ctx, { assetId }): Promise<{ success: boolean }> => {
     const asset = await ctx.runQuery(api.media.getAsset, { assetId });
 
     if (!asset) {
