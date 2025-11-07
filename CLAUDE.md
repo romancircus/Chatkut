@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChatKut is an open-source chat-based video editor that provides a natural language interface for video editing. It uses Remotion for video rendering, Dedalus SDK for multi-model AI orchestration, and implements a deterministic Plan-Execute-Patch editing architecture.
 
+**Current Status:** ✅ Weeks 3-6 Complete (Frontend UI, Composition Engine, Undo/Redo, Remotion Preview, Cloud Rendering)
+
 ## Core Architecture
 
 ### Tech Stack

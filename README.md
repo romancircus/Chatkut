@@ -2,6 +2,25 @@
 
 An open-source chat-based video editor powered by Remotion, Dedalus SDK, and Plan-Execute-Patch architecture.
 
+**Built this because I hate video editing and hiring editors are too expensive. I wanted a cost efficient way to mass produce media programmatically & conversationally.**
+
+---
+
+## ✨ Features
+
+- 🤖 **AI-Powered Editing** - Natural language video editing with GPT-4o
+- 🎬 **Remotion Integration** - Professional video rendering with React
+- ⚡ **Real-time Preview** - See your edits instantly with live composition preview
+- 📤 **Resumable Uploads** - TUS protocol for reliable large file uploads
+- 🔄 **Undo/Redo** - Full history with keyboard shortcuts (Cmd+Z)
+- ☁️ **Cloud Rendering** - Remotion Lambda for fast, scalable video exports
+- 💰 **Cost Tracking** - Transparent rendering costs with estimates
+- 🎨 **Modern UI** - Dark theme inspired by Remotion's design language
+- 🔥 **Real-time Sync** - Changes propagate instantly via Convex
+- 🎯 **Smart Selectors** - AI understands "the second clip" with disambiguation
+
+---
+
 ## Quick Start
 
 ### 1. Install Dependencies
@@ -105,27 +124,108 @@ See `CLAUDE.md` for detailed architecture documentation.
 
 ## Implementation Progress
 
-Follow the 8-week implementation plan in `IMPLEMENTATION_PLAN.md`.
+### ✅ Completed: Weeks 1-6
 
-### Week 1: Foundation + Cloudflare Setup ✅ (In Progress)
-- [x] Next.js 14 project created
-- [x] TypeScript strict mode configured
-- [x] Tailwind CSS set up
-- [x] ESLint and Prettier configured
-- [ ] Convex initialized
-- [ ] Cloudflare Stream + R2 configured
+**Week 1-2: Foundation**
+- ✅ Next.js 14 + TypeScript + Tailwind
+- ✅ Convex backend
+- ✅ Cloudflare Stream + R2 integration
+- ✅ Dedalus AI integration (GPT-4o)
 
-## Documentation
+**Week 3: Frontend UI**
+- ✅ Design system (Remotion-inspired dark theme)
+- ✅ Homepage with project listing
+- ✅ Chat interface with real-time sync
+- ✅ TUS upload widget
+- ✅ HLS video player
+- ✅ Asset library with filters
+- ✅ 3-panel project dashboard
 
-- **CLAUDE.md**: Architecture guidance for development
-- **IMPLEMENTATION_PLAN.md**: Detailed 8-week roadmap
-- **.claude/permissions.md**: Claude Code permissions setup
-- **chatkut-prd-v3.1-production-ready.md**: Complete PRD
+**Week 4: AI Integration**
+- ✅ Chat message handling
+- ✅ Edit plan generation
+- ✅ Remotion code generation
+- ✅ Context building for AI
+- ✅ Token usage tracking
 
-## License
+**Week 5: Composition Engine**
+- ✅ Selector system (byId, byLabel, byIndex, byType)
+- ✅ Executor engine (add, update, delete, move)
+- ✅ Disambiguator UI
+- ✅ Composition management
+
+**Week 6: Advanced Features**
+- ✅ Undo/redo with keyboard shortcuts
+- ✅ History panel
+- ✅ Remotion Player integration
+- ✅ Remotion Lambda setup
+- ✅ Render panel with progress tracking
+
+See `IMPLEMENTATION_SUMMARY.md` for complete details.
+
+## 📸 Demo
+
+### Chat-Based Editing
+```
+You: "Add my video and make it zoom in slowly"
+AI: "I'll add your video with a scale animation..."
+[Preview updates in real-time]
+```
+
+### Natural Commands
+- "Make the second clip louder"
+- "Add text saying 'Subscribe'"
+- "Fade in the background music"
+- "Move the logo to the top right"
+
+### Undo Anything
+Just press `Cmd+Z` - full history tracking with snapshots.
+
+---
+
+## 📚 Documentation
+
+- **[START_TESTING.md](START_TESTING.md)** - Quick start guide (3 steps to run locally)
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Comprehensive test scenarios
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Complete feature breakdown
+- **[CLAUDE.md](CLAUDE.md)** - Architecture guidance for AI development
+- **[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** - Original 8-week roadmap
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! This project follows the implementation plan in `IMPLEMENTATION_PLAN.md`.
+
+**Priority areas:**
+- Authentication (Clerk/Auth0)
+- Timeline UI for precise editing
+- More AI models via Dedalus
+- Template marketplace
+- Export to social media formats
+
+---
+
+## 📄 License
 
 MIT - Open Source
 
-## Contributing
+**Free to use commercially.** Built with love for creators who hate traditional video editing.
 
-See `IMPLEMENTATION_PLAN.md` for development workflow and best practices.
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Remotion](https://remotion.dev) - Video rendering in React
+- [Convex](https://convex.dev) - Real-time backend
+- [Dedalus](https://dedaluslabs.ai) - Multi-model AI routing
+- [Cloudflare](https://cloudflare.com) - Stream & R2 storage
+- [Next.js](https://nextjs.org) - React framework
+- [Tailwind CSS](https://tailwindcss.com) - Styling
+
+---
+
+## ⭐ Star This Repo
+
+If this saves you time (and money) on video editing, give it a star! ⭐
