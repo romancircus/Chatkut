@@ -195,4 +195,19 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_user", ["userId"]),
+
+  // Composition history table (for undo/redo)
+  compositionHistory: defineTable({
+    compositionId: v.id("compositions"),
+    // Full IR snapshot
+    ir: v.any(), // CompositionIR
+    // Description of what changed
+    description: v.string(),
+    // Version number
+    version: v.number(),
+    timestamp: v.number(),
+  })
+    .index("by_composition", ["compositionId"])
+    .index("by_composition_and_version", ["compositionId", "version"])
+    .index("by_timestamp", ["timestamp"]),
 });

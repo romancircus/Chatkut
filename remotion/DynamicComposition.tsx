@@ -44,7 +44,7 @@ export const DynamicComposition: React.FC<DynamicCompositionProps> = ({
   }
 
   return (
-    <AbsoluteFill style={{ backgroundColor: compositionIR.metadata.backgroundColor || "#000" }}>
+    <AbsoluteFill style={{ backgroundColor: "#000" }}>
       {compositionIR.elements.map((element) => (
         <RenderElement key={element.id} element={element} />
       ))}

@@ -26,9 +26,7 @@ export const startRender = action({
     const userId = identity.subject as any;
 
     // Get composition
-    const composition = await ctx.runQuery(
-      async (ctx) => await ctx.db.get(compositionId)
-    );
+    const composition = await ctx.runQuery(api.compositions.get, { compositionId });
 
     if (!composition) {
       throw new Error("Composition not found");
@@ -39,41 +37,18 @@ export const startRender = action({
     const renderId = `render_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Save render job
-    const renderJobId = await ctx.runMutation(
-      async (ctx) =>
-        await ctx.db.insert("renderJobs", {
-          compositionId,
-          userId,
-          projectId: composition.projectId,
-          renderId,
-          status: "pending",
-          progress: 0,
-          codec: codec || "h264",
-          quality: quality || 80,
-          estimatedCost: 0.15, // Mock cost
-          actualCost: 0,
-          createdAt: Date.now(),
-        })
-    );
+    const renderJobId = await ctx.runMutation(api.rendering.createRenderJob, {
+      compositionId,
+      userId,
+      renderId,
+      status: "pending",
+      estimatedCost: 0.15, // Mock cost
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
 
     // Start render (would call Remotion Lambda here)
-    // const { renderId, estimatedCost } = await startRemotionRender({
-    //   compositionId: composition._id,
-    //   serveUrl: "...",
-    //   codec,
-    //   quality,
-    // });
-
-    // Simulate rendering progress
-    setTimeout(async () => {
-      await ctx.runMutation(
-        async (ctx) =>
-          await ctx.db.patch(renderJobId, {
-            status: "rendering",
-            progress: 0.3,
-          })
-      );
-    }, 2000);
+    // In production: call Remotion Lambda API
 
     return {
       renderJobId,
@@ -237,9 +212,7 @@ export const estimateRenderCost = action({
     codec: v.optional(v.string()),
   },
   handler: async (ctx, { compositionId, codec }) => {
-    const composition = await ctx.runQuery(
-      async (ctx) => await ctx.db.get(compositionId)
-    );
+    const composition = await ctx.runQuery(api.compositions.get, { compositionId });
 
     if (!composition) {
       throw new Error("Composition not found");
@@ -259,5 +232,40 @@ export const estimateRenderCost = action({
       disclaimer:
         "Estimate based on standard quality H.264 encoding. Actual cost may vary.",
     };
+  },
+});
+
+// Import API for use in actions
+import { api } from "./_generated/api";
+
+// Helper mutation to create render job
+export const createRenderJob = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    userId: v.id("users"),
+    renderId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("rendering"),
+      v.literal("complete"),
+      v.literal("error")
+    ),
+    estimatedCost: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("renderJobs", args);
+  },
+});
+
+// Helper mutation to update render job
+export const updateRenderJob = mutation({
+  args: {
+    renderJobId: v.id("renderJobs"),
+    updates: v.any(),
+  },
+  handler: async (ctx, { renderJobId, updates }) => {
+    await ctx.db.patch(renderJobId, updates);
   },
 });

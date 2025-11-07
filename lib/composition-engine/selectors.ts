@@ -7,12 +7,12 @@
 
 import type {
   CompositionIR,
-  Element,
-  Selector,
-  SelectorByLabel,
-  SelectorById,
-  SelectorByIndex,
-  SelectorByType,
+  CompositionElement,
+  ElementSelector,
+  ByLabelSelector,
+  ByIdSelector,
+  ByIndexSelector,
+  ByTypeSelector,
 } from "@/types/composition-ir";
 
 /**
@@ -20,7 +20,7 @@ import type {
  */
 export interface SelectorResult {
   /** Array of matched elements */
-  matches: Element[];
+  matches: CompositionElement[];
   /** Whether the selector is ambiguous (needs user clarification) */
   isAmbiguous: boolean;
   /** Suggested disambiguation options */

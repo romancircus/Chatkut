@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { FileVideoIcon, ImageIcon, MusicIcon, TrashIcon, LoaderIcon, CheckCircleIcon } from "lucide-react";
@@ -18,7 +18,7 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
   const [filterType, setFilterType] = useState<"all" | "video" | "audio" | "image">("all");
 
   const assets = useQuery(api.media.listAssets, { projectId });
-  const deleteAsset = useMutation(api.media.deleteAsset);
+  const deleteAsset = useAction(api.media.deleteAsset);
 
   const filteredAssets = assets?.filter((asset) =>
     filterType === "all" ? true : asset.type === filterType

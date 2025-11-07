@@ -22,4 +22,4 @@ Config.setDelayRenderTimeoutInMilliseconds(30000);
 Config.setChromiumDisableWebSecurity(true); // Needed for CORS with media files
 
 // Lambda configuration (when we deploy)
-Config.setAwsRegion(process.env.REMOTION_AWS_REGION || "us-east-1");
+// Note: setAwsRegion is deprecated in Remotion v4, configure in lambda deployment instead

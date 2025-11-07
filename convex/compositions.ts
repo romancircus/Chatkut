@@ -31,22 +31,22 @@ export const create = mutation({
 
     // Create initial IR structure
     const ir: CompositionIR = {
-      version: "1.0",
+      id: `comp_${Date.now()}`,
+      version: 1,
       metadata: {
-        title: args.name || "Untitled Composition",
         width: args.width || 1920,
         height: args.height || 1080,
         fps: args.fps || 30,
         durationInFrames: args.durationInFrames || 300, // 10 seconds at 30fps
       },
       elements: [],
+      patches: [],
     };
 
     const compositionId = await ctx.db.insert("compositions", {
       projectId: args.projectId,
-      name: args.name || "Untitled Composition",
       ir,
-      code: null,
+      code: "",
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -216,7 +216,7 @@ function executeAdd(ir: CompositionIR, plan: EditPlan) {
     durationInFrames: plan.changes.durationInFrames || 90,
     properties: plan.changes.properties || {},
     label: plan.changes.label,
-    animation: plan.changes.animation,
+    animation: plan.changes.animations,
   };
 
   const updatedIR = {
@@ -287,9 +287,9 @@ function executeUpdate(
             ? plan.changes.label
             : el.label,
         animation:
-          plan.changes.animation !== undefined
-            ? plan.changes.animation
-            : el.animation,
+          plan.changes.animations !== undefined
+            ? plan.changes.animations
+            : el.animations,
       };
     }),
   };

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import * as tus from "tus-js-client";
@@ -24,7 +24,7 @@ interface UploadProgress {
 export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
   const [uploads, setUploads] = useState<Map<string, UploadProgress>>(new Map());
 
-  const requestUploadUrl = useMutation(api.media.requestStreamUploadUrl);
+  const requestUploadUrl = useAction(api.media.requestStreamUploadUrl);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     for (const file of acceptedFiles) {

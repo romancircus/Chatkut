@@ -7,7 +7,7 @@
 
 import type {
   CompositionIR,
-  Element,
+  CompositionElement,
   EditPlan,
   Animation,
 } from "@/types/composition-ir";
@@ -77,7 +77,7 @@ export function executeEditPlan(
  * Execute ADD operation
  */
 function executeAdd(ir: CompositionIR, plan: EditPlan): ExecutionResult {
-  const newElement: Element = {
+  const newElement: CompositionElement = {
     id: generateElementId(),
     type: plan.changes.type as any,
     from: plan.changes.from || 0,
@@ -87,8 +87,8 @@ function executeAdd(ir: CompositionIR, plan: EditPlan): ExecutionResult {
   };
 
   // Add animations if specified
-  if (plan.changes.animation) {
-    newElement.animation = plan.changes.animation as Animation;
+  if (plan.changes.animations) {
+    newElement.animations = plan.changes.animations as Animation;
   }
 
   // Clone IR and add element
@@ -155,7 +155,7 @@ function executeUpdate(ir: CompositionIR, plan: EditPlan): ExecutionResult {
       if (el.id !== targetElement.id) return el;
 
       // Merge changes
-      const updated: Element = { ...el };
+      const updated: CompositionElement = { ...el };
 
       // Update properties
       if (plan.changes.properties) {
@@ -179,8 +179,8 @@ function executeUpdate(ir: CompositionIR, plan: EditPlan): ExecutionResult {
       }
 
       // Update animation
-      if (plan.changes.animation !== undefined) {
-        updated.animation = plan.changes.animation as Animation;
+      if (plan.changes.animations !== undefined) {
+        updated.animations = plan.changes.animations as Animation;
       }
 
       return updated;
@@ -309,7 +309,7 @@ function executeMove(ir: CompositionIR, plan: EditPlan): ExecutionResult {
     elements: ir.elements.map((el) => {
       if (el.id !== targetElement.id) return el;
 
-      const updated: Element = { ...el };
+      const updated: CompositionElement = { ...el };
 
       // Update timing
       if (plan.changes.from !== undefined) {

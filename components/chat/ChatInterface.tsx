@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -20,8 +20,8 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
   // Get chat messages
   const messages = useQuery(api.ai.getChatMessages, { projectId, limit: 50 });
 
-  // Send message mutation
-  const sendMessage = useMutation(api.ai.sendChatMessage);
+  // Send message action
+  const sendMessage = useAction(api.ai.sendChatMessage);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

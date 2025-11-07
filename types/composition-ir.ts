@@ -35,7 +35,7 @@ export type CompositionElement = {
 };
 
 // Element types
-export type ElementType = "video" | "audio" | "text" | "image" | "sequence";
+export type ElementType = "video" | "audio" | "text" | "image" | "sequence" | "shape";
 
 // Video element properties
 export type VideoElementProperties = {
