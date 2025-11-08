@@ -41,28 +41,31 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
       try {
         // Request TUS endpoint from Convex
         console.log("[VideoUpload] Requesting TUS endpoint for:", file.name);
-        const { uploadUrl, assetId } = await requestUploadUrl({
+        const { uploadUrl, apiToken, assetId } = await requestUploadUrl({
           projectId,
           filename: file.name,
           fileSize: file.size,
         });
 
-        console.log("[VideoUpload] Got TUS upload URL:", uploadUrl);
+        console.log("[VideoUpload] Got TUS endpoint:", uploadUrl);
 
-        if (!uploadUrl) {
-          throw new Error("No upload URL received from Convex");
+        if (!uploadUrl || !apiToken) {
+          throw new Error("No upload URL or API token received from Convex");
         }
 
-        // Start TUS upload with Cloudflare Stream Direct Creator Upload
-        // The upload was ALREADY CREATED by Cloudflare API - we use uploadUrl parameter
-        // to upload to the pre-created upload resource.
+        // Start TUS upload with Cloudflare Stream
+        // TUS will POST to endpoint to create upload, then PATCH to upload chunks
         const upload = new tus.Upload(file, {
-          uploadUrl: uploadUrl, // Use the pre-created upload URL from Cloudflare
-          chunkSize: 5 * 1024 * 1024, // 5 MB chunks (Cloudflare minimum)
-          retryDelays: [0, 1000, 3000, 5000], // Retry delays
-          uploadDataDuringCreation: true, // Send data immediately (no HEAD request first)
-          // NO metadata - Cloudflare already has it from the Direct Creator Upload API call
-          // NO resume - this URL is one-time use
+          endpoint: uploadUrl, // Cloudflare Stream TUS endpoint
+          headers: {
+            Authorization: `Bearer ${apiToken}`, // Required for Cloudflare API
+          },
+          chunkSize: 50 * 1024 * 1024, // 50 MB chunks (Cloudflare recommends 50MB)
+          retryDelays: [0, 3000, 5000, 10000, 20000], // Progressive retry delays
+          metadata: {
+            name: file.name,
+            filetype: file.type,
+          },
           onError: (error) => {
             console.error("[VideoUpload] Upload failed:", error);
             setUploads((prev) => {

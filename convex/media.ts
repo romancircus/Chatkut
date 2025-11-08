@@ -45,7 +45,7 @@ export const requestStreamUploadUrl = action({
   handler: async (ctx, { projectId, filename, fileSize }): Promise<{
     assetId: any;
     uploadUrl: string;
-    streamId: string;
+    apiToken: string;
   }> => {
     console.log("[media:requestUpload] Requesting TUS upload for:", { filename, fileSize });
 
@@ -57,68 +57,28 @@ export const requestStreamUploadUrl = action({
       );
     }
 
-    // Step 1: Request TUS upload URL from Cloudflare Stream
-    // This uses the Direct Creator Upload API
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          maxDurationSeconds: 3600, // 1 hour max video length
-          meta: {
-            projectId,
-            filename,
-          },
-          requireSignedURLs: false, // Public HLS URLs (change to true for private videos)
-          uploadCreator: "chatkut-app",
-        }),
-      }
-    );
+    // Return TUS endpoint for Cloudflare Stream
+    // TUS client will POST to this endpoint to create an upload
+    const tusEndpoint = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[media:requestUpload] Cloudflare API error:", {
-        status: response.status,
-        error: errorText,
-      });
-      throw new Error(
-        `Cloudflare Stream API error (${response.status}): ${errorText}`
-      );
-    }
+    console.log("[media:requestUpload] Returning TUS endpoint:", tusEndpoint);
 
-    const data = await response.json();
-
-    if (!data.success || !data.result) {
-      console.error("[media:requestUpload] Invalid response from Cloudflare:", data);
-      throw new Error("Invalid response from Cloudflare Stream API");
-    }
-
-    console.log("[media:requestUpload] Got TUS URL from Cloudflare:", {
-      uploadURL: data.result.uploadURL,
-      uid: data.result.uid,
-    });
-
-    // Step 2: Create asset record in Convex (metadata only)
+    // Create asset record in Convex (metadata only)
+    // Note: We don't have streamId yet - TUS will provide it after upload starts
     const assetId = await ctx.runMutation(api.media.createAsset, {
       projectId,
-      streamId: data.result.uid, // Cloudflare Stream media ID
       filename,
       fileSize,
       type: "video",
       status: "uploading",
-      uploadUrl: data.result.uploadURL,
     });
 
     console.log("[media:requestUpload] Created asset record:", assetId);
 
     return {
       assetId,
-      uploadUrl: data.result.uploadURL, // One-time TUS upload URL
-      streamId: data.result.uid, // Cloudflare Stream media UID
+      uploadUrl: tusEndpoint, // TUS endpoint for creating uploads
+      apiToken: CLOUDFLARE_STREAM_API_TOKEN, // Frontend needs this for TUS headers
     };
   },
 });
