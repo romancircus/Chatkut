@@ -15,8 +15,8 @@ import {
 } from "@/lib/dedalus/client";
 import type { EditPlan } from "@/types/composition-ir";
 
-// Get Dedalus API key from environment
-const DEDALUS_API_KEY = process.env.DEDALUS_API_KEY;
+// Get AI API key from environment (prefer Anthropic, fallback to Dedalus)
+const AI_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.DEDALUS_API_KEY;
 
 /**
  * Send a chat message and get AI response
@@ -49,9 +49,9 @@ export const sendChatMessage = action({
     });
 
     // Validate API key
-    if (!DEDALUS_API_KEY) {
+    if (!AI_API_KEY) {
       throw new Error(
-        "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+        "AI API key not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\" or DEDALUS_API_KEY \"dsk_your-key\""
       );
     }
 
@@ -61,9 +61,9 @@ export const sendChatMessage = action({
     // Get chat history
     const history = await ctx.runQuery(api.ai.getChatMessages, { projectId, limit: 10 });
 
-    // Generate AI response using Dedalus SDK
+    // Generate AI response using AI SDK
     const response = await generateChatResponse(
-      DEDALUS_API_KEY,
+      AI_API_KEY,
       message,
       {
         assets: project?.assets || [],
@@ -113,9 +113,9 @@ export const generateEditPlan = action({
     model: string;
   }> => {
     // Validate API key
-    if (!DEDALUS_API_KEY) {
+    if (!AI_API_KEY) {
       throw new Error(
-        "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+        "AI API key not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\" or DEDALUS_API_KEY \"dsk_your-key\""
       );
     }
 
@@ -126,9 +126,9 @@ export const generateEditPlan = action({
       throw new Error("Composition not found");
     }
 
-    // Generate edit plan using Dedalus SDK
+    // Generate edit plan using AI SDK
     const plan = await generateEditPlanViaDedalus(
-      DEDALUS_API_KEY,
+      AI_API_KEY,
       userMessage,
       composition.ir
     );

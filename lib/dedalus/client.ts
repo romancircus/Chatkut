@@ -170,19 +170,19 @@ function createDedalusClient(apiKey: string): DedalusClient {
 let dedalusClientInstance: DedalusClient | null = null;
 
 export function getAIClient(apiKey?: string): DedalusClient {
-  // Use provided API key or environment variable
-  const key = apiKey || process.env.DEDALUS_API_KEY;
+  // Prefer ANTHROPIC_API_KEY if available, fallback to DEDALUS_API_KEY
+  const key = apiKey || process.env.ANTHROPIC_API_KEY || process.env.DEDALUS_API_KEY;
 
   if (!key) {
     throw new Error(
-      "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+      "AI API key not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\" or DEDALUS_API_KEY \"dsk_your-key\""
     );
   }
 
   if (!dedalusClientInstance) {
-    console.log("[dedalus:client] Initializing Dedalus SDK...");
+    console.log("[dedalus:client] Initializing AI SDK...");
     dedalusClientInstance = createDedalusClient(key);
-    console.log("[dedalus:client] Dedalus SDK initialized ✅");
+    console.log("[dedalus:client] AI SDK initialized ✅");
   }
 
   return dedalusClientInstance;
