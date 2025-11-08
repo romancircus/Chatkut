@@ -7,8 +7,8 @@
  * @see PRIORITIZED_IMPLEMENTATION_PLAN.md Task 1.3
  */
 
-// NOTE: Dedalus SDK types - using any for now until official types are available
-type DedalusClient = any;
+import { Dedalus } from "dedalus-labs";
+import type { Completion } from "dedalus-labs/resources/chat";
 
 // Model routing strategy
 export type ModelTask =
@@ -22,167 +22,65 @@ export type ModelTask =
 export const MODEL_ROUTING: Record<
   ModelTask,
   {
-    provider: "anthropic" | "openai" | "google";
-    model: string;
+    model: string | string[];
     temperature: number;
     reasoning: string;
+    agent_attributes?: Record<string, number>;
   }
 > = {
   "code-generation": {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
+    model: "claude-3-5-sonnet-20241022",
     temperature: 0.3, // Low for determinism
     reasoning: "Best code quality, understands Remotion/React patterns",
+    agent_attributes: { accuracy: 0.9, intelligence: 0.9 },
   },
   "plan-generation": {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
+    model: "claude-3-5-sonnet-20241022",
     temperature: 0.3, // Low for determinism
     reasoning: "Excellent structured output, precise edit plans",
+    agent_attributes: { accuracy: 0.95, intelligence: 0.9 },
   },
   "code-analysis": {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
+    model: "claude-3-5-sonnet-20241022",
     temperature: 0.5,
     reasoning: "Deep understanding of code structure",
+    agent_attributes: { intelligence: 0.9, accuracy: 0.85 },
   },
   "chat-response": {
-    provider: "openai",
-    model: "gpt-4o",
+    model: ["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet-20241022"],
     temperature: 0.7,
-    reasoning: "Balanced cost/quality for conversational responses",
+    reasoning: "Multi-model routing for balanced cost/quality",
+    agent_attributes: { friendliness: 0.9, efficiency: 0.8 },
   },
   "simple-edit": {
-    provider: "google",
-    model: "gemini-2.0-flash",
+    model: "gpt-4o-mini",
     temperature: 0.5,
     reasoning: "Fast and cheap for simple property updates",
+    agent_attributes: { efficiency: 0.9, speed: 0.9 },
   },
 };
 
 /**
- * Initialize Dedalus client using dedalus-labs SDK
- *
- * For now, fallback to direct Anthropic SDK since dedalus-labs may not be fully set up
- */
-function createDedalusClient(apiKey: string): DedalusClient {
-  // Use Anthropic SDK directly for now
-  // The DEDALUS_API_KEY is actually for their service, but we'll use Anthropic directly
-  const Anthropic = require("@anthropic-ai/sdk");
-
-  // If apiKey starts with "sk-ant-", it's an Anthropic key
-  // If it starts with "dsk_", it's a Dedalus key (TODO: implement Dedalus SDK)
-  const isAnthropicKey = apiKey.startsWith("sk-ant-");
-
-  if (!isAnthropicKey) {
-    console.warn("[dedalus:client] Non-Anthropic API key detected. Using mock responses for now.");
-    console.warn("[dedalus:client] Please set ANTHROPIC_API_KEY for full functionality.");
-
-    // Return mock client that generates simple responses
-    return {
-      generateText: async (params: any) => {
-        const { prompt } = params;
-        return {
-          text: `I understand you want to: ${prompt}\n\nHowever, I need a valid Anthropic API key to process this request. Please set ANTHROPIC_API_KEY in your Convex environment.`,
-          model: "mock",
-          provider: "mock",
-          usage: { input: 0, output: 0, total: 0 },
-        };
-      },
-      generateJSON: async (params: any) => {
-        return {
-          data: { error: "Mock mode - API key needed" },
-          model: "mock",
-          provider: "mock",
-        };
-      },
-    };
-  }
-
-  const anthropic = new Anthropic.Anthropic({ apiKey });
-
-  return {
-    generateText: async (params: any) => {
-      const { model, systemPrompt, prompt, temperature, maxTokens } = params;
-
-      console.log(`[dedalus:client] Calling Anthropic ${model}...`);
-
-      const message = await anthropic.messages.create({
-        model: model || "claude-sonnet-4-20250514",
-        max_tokens: maxTokens || 1000,
-        temperature: temperature || 0.7,
-        system: systemPrompt,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const text = message.content[0].type === "text" ? message.content[0].text : "";
-
-      return {
-        text,
-        model: message.model,
-        provider: "anthropic",
-        usage: {
-          input: message.usage.input_tokens,
-          output: message.usage.output_tokens,
-          total: message.usage.input_tokens + message.usage.output_tokens,
-        },
-      };
-    },
-
-    generateJSON: async (params: any) => {
-      const { model, systemPrompt, prompt, temperature } = params;
-
-      console.log(`[dedalus:client] Calling Anthropic ${model} (JSON mode)...`);
-
-      const message = await anthropic.messages.create({
-        model: model || "claude-sonnet-4-20250514",
-        max_tokens: 2000,
-        temperature: temperature || 0.7,
-        system: systemPrompt + "\n\nRespond with valid JSON only.",
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const text = message.content[0].type === "text" ? message.content[0].text : "";
-
-      // Try to parse JSON from response
-      try {
-        const json = JSON.parse(text);
-        return {
-          data: json,
-          model: message.model,
-          provider: "anthropic",
-        };
-      } catch {
-        // If not valid JSON, return as-is
-        return {
-          data: { text },
-          model: message.model,
-          provider: "anthropic",
-        };
-      }
-    },
-  };
-}
-
-/**
  * AI Client singleton
  */
-let dedalusClientInstance: DedalusClient | null = null;
+let dedalusClientInstance: Dedalus | null = null;
 
-export function getAIClient(apiKey?: string): DedalusClient {
-  // Prefer ANTHROPIC_API_KEY if available, fallback to DEDALUS_API_KEY
-  const key = apiKey || process.env.ANTHROPIC_API_KEY || process.env.DEDALUS_API_KEY;
+export function getAIClient(apiKey?: string): Dedalus {
+  // Use provided API key or environment variable
+  const key = apiKey || process.env.DEDALUS_API_KEY;
 
   if (!key) {
     throw new Error(
-      "AI API key not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\" or DEDALUS_API_KEY \"dsk_your-key\""
+      "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
     );
   }
 
   if (!dedalusClientInstance) {
-    console.log("[dedalus:client] Initializing AI SDK...");
-    dedalusClientInstance = createDedalusClient(key);
-    console.log("[dedalus:client] AI SDK initialized ✅");
+    console.log("[dedalus:client] Initializing Dedalus SDK...");
+    dedalusClientInstance = new Dedalus({
+      apiKey: key,
+    });
+    console.log("[dedalus:client] Dedalus SDK initialized ✅");
   }
 
   return dedalusClientInstance;
@@ -190,7 +88,7 @@ export function getAIClient(apiKey?: string): DedalusClient {
 
 /**
  * Generate chat response
- * Uses GPT-4o for balanced cost/quality
+ * Uses multi-model routing for balanced cost/quality
  */
 export async function generateChatResponse(
   apiKey: string,
@@ -215,29 +113,34 @@ export async function generateChatResponse(
   try {
     const client = getAIClient(apiKey);
 
-    // Call Dedalus SDK (adjust based on actual SDK API)
-    const response = await client.generateText({
-      provider: routing.provider,
+    // Call Dedalus SDK with multi-model routing
+    const response = await client.chat.create({
       model: routing.model,
-      systemPrompt,
-      prompt: message,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message },
+      ],
       temperature: routing.temperature,
-      maxTokens: 1000,
+      max_tokens: 1000,
+      agent_attributes: routing.agent_attributes,
     });
 
     console.log("[dedalus:chat] Response generated:", {
-      model: response.model || routing.model,
-      provider: response.provider || routing.provider,
-      tokens: response.tokenUsage?.total || 0,
-      cost: response.cost || 0,
+      model: response.model,
+      tokens: response.usage?.total_tokens || 0,
     });
 
     return {
-      text: response.text || response.content || "",
-      model: response.model || routing.model,
-      provider: response.provider || routing.provider,
-      cost: response.cost,
-      tokens: response.tokenUsage || response.usage,
+      text: response.choices[0]?.message?.content || "",
+      model: response.model,
+      provider: "dedalus", // Dedalus routes to appropriate provider
+      tokens: response.usage
+        ? {
+            input: response.usage.prompt_tokens,
+            output: response.usage.completion_tokens,
+            total: response.usage.total_tokens,
+          }
+        : undefined,
     };
   } catch (error) {
     console.error("[dedalus:chat] Error generating response:", error);
@@ -262,20 +165,30 @@ export async function generateEditPlan(
   try {
     const client = getAIClient(apiKey);
 
-    // Call Dedalus SDK for JSON generation
-    const response = await client.generateJSON({
-      provider: routing.provider,
+    // Call Dedalus SDK
+    const response = await client.chat.create({
       model: routing.model,
-      systemPrompt,
-      prompt: userMessage,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
       temperature: routing.temperature,
+      max_tokens: 2000,
+      agent_attributes: routing.agent_attributes,
     });
 
-    console.log("[dedalus:plan] Plan generated:", {
-      operations: response.data?.operations?.length || 0,
-    });
+    const text = response.choices[0]?.message?.content || "";
 
-    return response.data;
+    console.log("[dedalus:plan] Plan generated");
+
+    // Try to parse JSON from response
+    try {
+      const json = JSON.parse(text);
+      return json;
+    } catch {
+      // If not valid JSON, return as-is
+      return { text };
+    }
   } catch (error) {
     console.error("[dedalus:plan] Error generating plan:", error);
     throw new Error(`Failed to generate edit plan: ${error}`);
@@ -304,22 +217,23 @@ export async function generateRemotionCode(
   try {
     const client = getAIClient(apiKey);
 
-    const response = await client.generateText({
-      provider: routing.provider,
+    const response = await client.chat.create({
       model: routing.model,
-      systemPrompt,
-      prompt,
+      input: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
       temperature: routing.temperature,
-      maxTokens: 4096,
+      max_tokens: 4096,
+      agent_attributes: routing.agent_attributes,
     });
 
     console.log("[dedalus:code] Code generated successfully");
 
     return {
-      code: response.text || response.content || "",
-      model: response.model || routing.model,
-      provider: response.provider || routing.provider,
-      cost: response.cost,
+      code: response.choices[0]?.message?.content || "",
+      model: response.model,
+      provider: "dedalus",
     };
   } catch (error) {
     console.error("[dedalus:code] Error generating code:", error);
@@ -426,7 +340,7 @@ export function calculateCostSavings(
     (avgTokens.input * claudeCostPerToken.input +
       avgTokens.output * claudeCostPerToken.output);
 
-  // Multi-model cost (optimized routing)
+  // Multi-model cost (optimized routing via Dedalus)
   let multiModelCost = 0;
 
   // Code generation: Claude (high cost)
@@ -441,13 +355,15 @@ export function calculateCostSavings(
     (avgTokens.input * claudeCostPerToken.input +
       avgTokens.output * claudeCostPerToken.output);
 
-  // Chat: GPT-4o (medium cost, $2.5/$10 per MTok)
+  // Chat: Multi-model routing (medium cost, Dedalus optimizes)
   multiModelCost +=
     (taskCounts["chat-response"] || 0) *
     (avgTokens.input * (2.5 / 1_000_000) + avgTokens.output * (10 / 1_000_000));
 
-  // Simple edits: Gemini Flash (essentially free)
-  multiModelCost += (taskCounts["simple-edit"] || 0) * 0;
+  // Simple edits: GPT-4o-mini (cheap)
+  multiModelCost +=
+    (taskCounts["simple-edit"] || 0) *
+    (avgTokens.input * (0.15 / 1_000_000) + avgTokens.output * (0.6 / 1_000_000));
 
   const savings = singleModelCost - multiModelCost;
   const savingsPercent = singleModelCost > 0 ? (savings / singleModelCost) * 100 : 0;
