@@ -6,18 +6,35 @@
  */
 
 import { v } from "convex/values";
-import { action, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { action, httpAction, mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import { Webhook } from "svix";
 
-// Environment variables
-const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!;
-const CLOUDFLARE_STREAM_TOKEN = process.env.CLOUDFLARE_STREAM_TOKEN!;
-const CLOUDFLARE_R2_ACCESS_KEY = process.env.CLOUDFLARE_R2_ACCESS_KEY!;
-const CLOUDFLARE_R2_SECRET_KEY = process.env.CLOUDFLARE_R2_SECRET_KEY!;
+// Environment variables (set via `npx convex env set`)
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const CLOUDFLARE_STREAM_API_TOKEN = process.env.CLOUDFLARE_STREAM_API_TOKEN;
+const CLOUDFLARE_R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+const CLOUDFLARE_R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+const CLOUDFLARE_R2_ENDPOINT = process.env.CLOUDFLARE_R2_ENDPOINT;
 const CLOUDFLARE_R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME || "chatkut-media";
+const CLOUDFLARE_WEBHOOK_SECRET = process.env.CLOUDFLARE_WEBHOOK_SECRET;
+
+// Debug: Log environment variable status
+console.log("[media.ts] Environment check:", {
+  hasAccountId: !!CLOUDFLARE_ACCOUNT_ID,
+  hasStreamToken: !!CLOUDFLARE_STREAM_API_TOKEN,
+  hasR2AccessKey: !!CLOUDFLARE_R2_ACCESS_KEY_ID,
+  hasR2SecretKey: !!CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+  hasR2Endpoint: !!CLOUDFLARE_R2_ENDPOINT,
+  hasWebhookSecret: !!CLOUDFLARE_WEBHOOK_SECRET,
+  accountIdValue: CLOUDFLARE_ACCOUNT_ID ? `${CLOUDFLARE_ACCOUNT_ID.substring(0, 8)}...` : "undefined",
+});
 
 /**
- * Request a TUS upload URL for video/audio from Cloudflare Stream
+ * Request TUS upload URL for video/audio from Cloudflare Stream
+ * Uses Direct Creator Upload API to get a one-time TUS upload URL
+ *
+ * @see https://developers.cloudflare.com/stream/uploading-videos/direct-creator-uploads/
  */
 export const requestStreamUploadUrl = action({
   args: {
@@ -30,84 +47,172 @@ export const requestStreamUploadUrl = action({
     uploadUrl: string;
     streamId: string;
   }> => {
-    // Call Cloudflare Stream API to get TUS upload URL
+    console.log("[media:requestUpload] Requesting TUS upload for:", { filename, fileSize });
+
+    // Validate environment variables
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_STREAM_API_TOKEN) {
+      console.error("[media:requestUpload] Missing Cloudflare credentials");
+      throw new Error(
+        "Cloudflare not configured. Run: npx convex env set CLOUDFLARE_ACCOUNT_ID \"your-id\""
+      );
+    }
+
+    // Step 1: Request TUS upload URL from Cloudflare Stream
+    // This uses the Direct Creator Upload API
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/direct_upload`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${CLOUDFLARE_STREAM_TOKEN}`,
+          Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          maxDurationSeconds: 21600, // 6 hours max
-          requireSignedURLs: false, // Set to true for private videos
-          allowedOrigins: ["http://localhost:3000"], // Add production domain later
+          maxDurationSeconds: 3600, // 1 hour max video length
           meta: {
-            filename,
             projectId,
+            filename,
           },
+          requireSignedURLs: false, // Public HLS URLs (change to true for private videos)
+          uploadCreator: "chatkut-app",
         }),
       }
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Cloudflare Stream API error: ${error}`);
+      const errorText = await response.text();
+      console.error("[media:requestUpload] Cloudflare API error:", {
+        status: response.status,
+        error: errorText,
+      });
+      throw new Error(
+        `Cloudflare Stream API error (${response.status}): ${errorText}`
+      );
     }
 
     const data = await response.json();
-    const result = data.result;
 
-    // Create asset record in Convex (metadata only)
+    if (!data.success || !data.result) {
+      console.error("[media:requestUpload] Invalid response from Cloudflare:", data);
+      throw new Error("Invalid response from Cloudflare Stream API");
+    }
+
+    console.log("[media:requestUpload] Got TUS URL from Cloudflare:", {
+      uploadURL: data.result.uploadURL,
+      uid: data.result.uid,
+    });
+
+    // Step 2: Create asset record in Convex (metadata only)
     const assetId = await ctx.runMutation(api.media.createAsset, {
       projectId,
-      streamId: result.uid,
+      streamId: data.result.uid, // Cloudflare Stream media ID
       filename,
       fileSize,
       type: "video",
       status: "uploading",
-      uploadUrl: result.uploadURL,
+      uploadUrl: data.result.uploadURL,
     });
+
+    console.log("[media:requestUpload] Created asset record:", assetId);
 
     return {
       assetId,
-      uploadUrl: result.uploadURL, // TUS endpoint for browser upload
-      streamId: result.uid,
+      uploadUrl: data.result.uploadURL, // One-time TUS upload URL
+      streamId: data.result.uid, // Cloudflare Stream media UID
     };
   },
 });
 
 /**
  * Handle Cloudflare Stream webhook when video is ready
+ * Uses Svix for webhook signature verification (security)
+ *
+ * Cloudflare Stream sends webhooks for:
+ * - status: "ready" - Video processed and ready to play
+ * - status: "error" - Video processing failed
+ *
+ * @see https://developers.cloudflare.com/stream/manage-video-library/using-webhooks/
  */
-export const handleStreamWebhook = action({
-  args: {
-    uid: v.string(),
-    status: v.string(),
-    meta: v.optional(v.any()),
-    playback: v.optional(v.any()),
-    duration: v.optional(v.number()),
-    thumbnail: v.optional(v.string()),
-  },
-  handler: async (ctx, { uid, status, playback, duration, thumbnail }): Promise<void> => {
-    if (status === "ready") {
-      // Update asset with playback URL and duration
-      await ctx.runMutation(api.media.updateAssetByStreamId, {
-        streamId: uid,
-        status: "ready",
-        playbackUrl: playback?.hls, // HLS manifest URL
-        duration,
-        thumbnailUrl: thumbnail,
-      });
-    } else if (status === "error") {
-      await ctx.runMutation(api.media.updateAssetByStreamId, {
-        streamId: uid,
-        status: "error",
-        errorMessage: "Stream processing failed",
-      });
-    }
-  },
+export const handleStreamWebhook = httpAction(async (ctx, request) => {
+  console.log("[media:webhook] Received webhook");
+
+  // Validate environment variables
+  if (!CLOUDFLARE_WEBHOOK_SECRET) {
+    console.error("[media:webhook] CLOUDFLARE_WEBHOOK_SECRET not set");
+    return new Response("Webhook secret not configured", { status: 500 });
+  }
+
+  if (!CLOUDFLARE_ACCOUNT_ID) {
+    console.error("[media:webhook] CLOUDFLARE_ACCOUNT_ID not set");
+    return new Response("Cloudflare account not configured", { status: 500 });
+  }
+
+  // Step 1: Verify webhook signature using Svix
+  const payloadString = await request.text();
+  const svixHeaders = {
+    "svix-id": request.headers.get("svix-id"),
+    "svix-timestamp": request.headers.get("svix-timestamp"),
+    "svix-signature": request.headers.get("svix-signature"),
+  };
+
+  if (!svixHeaders["svix-id"] || !svixHeaders["svix-timestamp"] || !svixHeaders["svix-signature"]) {
+    console.error("[media:webhook] Missing required Svix headers");
+    return new Response("Missing required headers", { status: 400 });
+  }
+
+  let event: any;
+
+  try {
+    const wh = new Webhook(CLOUDFLARE_WEBHOOK_SECRET);
+    event = wh.verify(payloadString, svixHeaders as Record<string, string>);
+    console.log("[media:webhook] Signature verified ✅");
+  } catch (error) {
+    console.error("[media:webhook] Signature verification failed:", error);
+    return new Response("Unauthorized - Invalid signature", { status: 401 });
+  }
+
+  // Step 2: Parse event data
+  console.log("[media:webhook] Event received:", {
+    status: event.status,
+    uid: event.uid,
+  });
+
+  // Step 3: Handle event based on status
+  if (event.status === "ready") {
+    // Generate HLS playback URL
+    const playbackUrl = `https://customer-${CLOUDFLARE_ACCOUNT_ID}.cloudflarestream.com/${event.uid}/manifest/video.m3u8`;
+
+    console.log("[media:webhook] Video ready, updating asset:", {
+      streamId: event.uid,
+      playbackUrl,
+      duration: event.duration,
+    });
+
+    await ctx.runMutation(internal.media.updateAssetByStreamId, {
+      streamId: event.uid,
+      status: "ready",
+      playbackUrl,
+      duration: event.duration || 0,
+      thumbnailUrl: event.thumbnail,
+    });
+
+    console.log("[media:webhook] Asset marked ready ✅");
+  } else if (event.status === "error") {
+    console.error("[media:webhook] Video processing failed:", event.uid);
+
+    await ctx.runMutation(internal.media.updateAssetByStreamId, {
+      streamId: event.uid,
+      status: "error",
+      errorMessage: "Stream processing failed",
+    });
+
+    console.log("[media:webhook] Asset marked error ❌");
+  } else {
+    console.log("[media:webhook] Ignoring event with status:", event.status);
+  }
+
+  // Step 4: Return 200 OK to acknowledge webhook
+  return new Response(null, { status: 200 });
 });
 
 /**
@@ -291,6 +396,22 @@ export const listAssets = query({
 });
 
 /**
+ * Update asset with stream ID (called from frontend after TUS upload URL is created)
+ */
+export const updateAssetStreamId = mutation({
+  args: {
+    assetId: v.id("assets"),
+    streamId: v.string(),
+  },
+  handler: async (ctx, { assetId, streamId }) => {
+    await ctx.db.patch(assetId, {
+      streamId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
  * Get asset by ID
  */
 export const getAsset = query({
@@ -317,16 +438,20 @@ export const deleteAsset = action({
     }
 
     // Delete from Cloudflare Stream if it's a video
-    if (asset.streamId) {
+    if (asset.streamId && CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_STREAM_API_TOKEN) {
+      console.log("[media:deleteAsset] Deleting from Cloudflare Stream:", asset.streamId);
+
       await fetch(
         `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/${asset.streamId}`,
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${CLOUDFLARE_STREAM_TOKEN}`,
+            Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}`,
           },
         }
       );
+
+      console.log("[media:deleteAsset] Deleted from Cloudflare ✅");
     }
 
     // TODO: Delete from R2 if it's an image/rendered video

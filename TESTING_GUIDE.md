@@ -60,7 +60,7 @@ This will:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open [http://localhost:3001](http://localhost:3001)
 
 ---
 
@@ -70,7 +70,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 **Goal:** Verify homepage and project creation
 
-1. Navigate to `http://localhost:3000`
+1. Navigate to `http://localhost:3001`
 2. You should see the ChatKut homepage
 3. Click **"New Project"** button
 4. Fill in project details:

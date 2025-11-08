@@ -18,14 +18,14 @@ import {
 import type { CompositionIR, CompositionElement } from "@/types/composition-ir";
 
 export interface DynamicCompositionProps {
-  compositionIR: CompositionIR | null;
+  compositionIR?: CompositionIR | null;
 }
 
 /**
  * Main composition component
  */
 export const DynamicComposition: React.FC<DynamicCompositionProps> = ({
-  compositionIR,
+  compositionIR = null,
 }) => {
   if (!compositionIR) {
     return (

@@ -41,7 +41,7 @@ export interface DisambiguationOption {
  */
 export function resolveSelector(
   ir: CompositionIR,
-  selector: Selector
+  selector: ElementSelector
 ): SelectorResult {
   switch (selector.type) {
     case "byId":
@@ -62,7 +62,7 @@ export function resolveSelector(
  */
 function resolveById(
   ir: CompositionIR,
-  selector: SelectorById
+  selector: ByIdSelector
 ): SelectorResult {
   const element = ir.elements.find((el) => el.id === selector.id);
 
@@ -84,7 +84,7 @@ function resolveById(
  */
 function resolveByLabel(
   ir: CompositionIR,
-  selector: SelectorByLabel
+  selector: ByLabelSelector
 ): SelectorResult {
   const matches = ir.elements.filter((el) => {
     // Check direct label match
@@ -134,7 +134,7 @@ function resolveByLabel(
  */
 function resolveByIndex(
   ir: CompositionIR,
-  selector: SelectorByIndex
+  selector: ByIndexSelector
 ): SelectorResult {
   // If parent is specified, resolve within that parent
   if (selector.parent) {
@@ -171,7 +171,7 @@ function resolveByIndex(
  */
 function resolveByType(
   ir: CompositionIR,
-  selector: SelectorByType
+  selector: ByTypeSelector
 ): SelectorResult {
   const matches = ir.elements.filter((el) => el.type === selector.elementType);
 
@@ -245,7 +245,7 @@ function resolveByType(
 /**
  * Evaluate a filter condition
  */
-function evaluateFilter(element: Element, filter: any): boolean {
+function evaluateFilter(element: CompositionElement, filter: any): boolean {
   // Simple property-based filtering
   for (const [key, value] of Object.entries(filter)) {
     const elementValue = (element as any)[key];
@@ -279,8 +279,8 @@ function formatDuration(frames: number, fps: number): string {
  */
 export function getAllMatches(
   ir: CompositionIR,
-  selector: Selector
-): Element[] {
+  selector: ElementSelector
+): CompositionElement[] {
   const result = resolveSelector(ir, selector);
   return result.matches;
 }
@@ -290,8 +290,8 @@ export function getAllMatches(
  */
 export function getSingleMatch(
   ir: CompositionIR,
-  selector: Selector
-): Element | null {
+  selector: ElementSelector
+): CompositionElement | null {
   const result = resolveSelector(ir, selector);
 
   if (result.isAmbiguous) {
@@ -306,7 +306,7 @@ export function getSingleMatch(
 /**
  * Check if selector is unambiguous
  */
-export function isUnambiguous(ir: CompositionIR, selector: Selector): boolean {
+export function isUnambiguous(ir: CompositionIR, selector: ElementSelector): boolean {
   const result = resolveSelector(ir, selector);
   return !result.isAmbiguous && result.matches.length === 1;
 }

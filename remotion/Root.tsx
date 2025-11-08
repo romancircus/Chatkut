@@ -6,7 +6,7 @@
  */
 
 import { Composition } from "remotion";
-import { DynamicComposition } from "./DynamicComposition";
+import { DynamicComposition, type DynamicCompositionProps } from "./DynamicComposition";
 
 /**
  * Default composition settings
@@ -28,7 +28,7 @@ export const RemotionRoot: React.FC = () => {
         width={DEFAULT_WIDTH}
         height={DEFAULT_HEIGHT}
         defaultProps={{
-          compositionIR: null, // Will be passed from the app
+          compositionIR: null,
         }}
       />
     </>

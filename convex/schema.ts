@@ -13,7 +13,7 @@ export default defineSchema({
 
   // Projects table
   projects: defineTable({
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     name: v.string(),
     description: v.optional(v.string()),
     createdAt: v.number(),
@@ -95,7 +95,7 @@ export default defineSchema({
   // Chat messages table
   chatMessages: defineTable({
     projectId: v.id("projects"),
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     // Role: user or assistant
     role: v.union(v.literal("user"), v.literal("assistant")),
     // Message content
@@ -112,7 +112,7 @@ export default defineSchema({
   // Render jobs table
   renderJobs: defineTable({
     compositionId: v.id("compositions"),
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     // Status
     status: v.union(
       v.literal("pending"),
@@ -143,7 +143,7 @@ export default defineSchema({
 
   // MCP usage table (for billing and rate limiting)
   mcpUsage: defineTable({
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     toolName: v.string(),
     // Tool parameters (sanitized)
     parameters: v.optional(v.any()),
@@ -160,7 +160,7 @@ export default defineSchema({
 
   // Subscriptions table
   subscriptions: defineTable({
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     // Tier: free, pro, team
     tier: v.union(v.literal("free"), v.literal("pro"), v.literal("team")),
     // Valid until timestamp
@@ -175,7 +175,7 @@ export default defineSchema({
   organizations: defineTable({
     name: v.string(),
     // Owner user ID
-    ownerId: v.id("users"),
+    ownerId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     // Member count (for Remotion license compliance)
     memberCount: v.number(),
     // Has Remotion company license
@@ -189,7 +189,7 @@ export default defineSchema({
   // Organization members table
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
-    userId: v.id("users"),
+    userId: v.union(v.id("users"), v.string()), // TODO: Change back to v.id("users") after auth is enabled
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("member")),
     createdAt: v.number(),
   })

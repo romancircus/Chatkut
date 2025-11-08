@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import * as tus from "tus-js-client";
@@ -25,6 +25,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
   const [uploads, setUploads] = useState<Map<string, UploadProgress>>(new Map());
 
   const requestUploadUrl = useAction(api.media.requestStreamUploadUrl);
+  const updateStreamId = useMutation(api.media.updateAssetStreamId);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     for (const file of acceptedFiles) {
@@ -38,23 +39,38 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
       }));
 
       try {
-        // Request TUS upload URL from Convex
-        const { uploadUrl, assetId } = await requestUploadUrl({
+        // Request TUS endpoint from Convex
+        console.log("[VideoUpload] Requesting TUS endpoint for:", file.name);
+        const { tusEndpoint, assetId } = await requestUploadUrl({
           projectId,
           filename: file.name,
           fileSize: file.size,
         });
 
-        // Start TUS upload
+        console.log("[VideoUpload] Got TUS endpoint:", tusEndpoint);
+
+        // Get Cloudflare API token from environment
+        const CLOUDFLARE_STREAM_TOKEN = process.env.NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN;
+
+        if (!CLOUDFLARE_STREAM_TOKEN) {
+          throw new Error("Missing NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN");
+        }
+
+        // Start TUS upload with correct configuration based on Cloudflare docs
         const upload = new tus.Upload(file, {
-          endpoint: uploadUrl,
-          retryDelays: [0, 3000, 5000, 10000], // Retry after 0s, 3s, 5s, 10s
+          endpoint: tusEndpoint, // Use endpoint, not uploadUrl
+          headers: {
+            Authorization: `Bearer ${CLOUDFLARE_STREAM_TOKEN}`, // Required for Cloudflare
+          },
+          chunkSize: 50 * 1024 * 1024, // 50 MB chunks (Cloudflare requires min 5 MB)
+          retryDelays: [0, 3000, 5000, 10000, 20000], // Retry delays from Cloudflare docs
           metadata: {
-            filename: file.name,
+            name: file.name, // Use 'name' not 'filename'
             filetype: file.type,
           },
+          uploadSize: file.size, // Explicitly set upload size
           onError: (error) => {
-            console.error("Upload failed:", error);
+            console.error("[VideoUpload] Upload failed:", error);
             setUploads((prev) => {
               const newMap = new Map(prev);
               newMap.set(uploadId, {
@@ -68,6 +84,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
           },
           onProgress: (bytesUploaded, bytesTotal) => {
             const progress = Math.round((bytesUploaded / bytesTotal) * 100);
+            console.log(`[VideoUpload] Progress: ${progress}% (${bytesUploaded}/${bytesTotal})`);
             setUploads((prev) => {
               const newMap = new Map(prev);
               const current = newMap.get(uploadId);
@@ -81,6 +98,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
             });
           },
           onSuccess: () => {
+            console.log("[VideoUpload] Upload finished successfully!");
             setUploads((prev) => {
               const newMap = new Map(prev);
               newMap.set(uploadId, {
@@ -106,12 +124,25 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
               onUploadComplete?.(assetId);
             }, 2000);
           },
+          onAfterResponse: (req, res) => {
+            // Capture stream-media-id from response headers (Cloudflare-specific)
+            return new Promise((resolve) => {
+              const streamMediaId = res.getHeader("stream-media-id");
+              if (streamMediaId) {
+                console.log("[VideoUpload] Got stream-media-id:", streamMediaId);
+                // Update the asset with the stream ID
+                updateStreamId({ assetId, streamId: streamMediaId });
+              }
+              resolve();
+            });
+          },
         });
 
         // Start the upload
+        console.log("[VideoUpload] Starting TUS upload...");
         upload.start();
       } catch (error) {
-        console.error("Failed to request upload URL:", error);
+        console.error("[VideoUpload] Failed to request upload URL:", error);
         setUploads((prev) => {
           const newMap = new Map(prev);
           newMap.set(uploadId, {
@@ -124,7 +155,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
         });
       }
     }
-  }, [projectId, requestUploadUrl, onUploadComplete]);
+  }, [projectId, requestUploadUrl, updateStreamId, onUploadComplete]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

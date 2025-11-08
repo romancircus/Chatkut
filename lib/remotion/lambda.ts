@@ -42,12 +42,36 @@ export interface RenderOptions {
 /**
  * Start a cloud render job
  */
-export async function startRender(options: RenderOptions): Promise<{
+export async function startRender(
+  options: RenderOptions & {
+    durationInFrames: number;
+    fps?: number;
+    width?: number;
+    height?: number;
+  }
+): Promise<{
   renderId: string;
   bucketName: string;
   estimatedCost: number;
 }> {
   try {
+    console.log("[remotion:render] Starting render:", {
+      compositionId: options.compositionId,
+      codec: options.codec || "h264",
+    });
+
+    // Get accurate cost estimate BEFORE rendering
+    const costEstimate = await estimateRenderCost(
+      options.durationInFrames,
+      options.fps || 30,
+      {
+        width: options.width,
+        height: options.height,
+      }
+    );
+
+    console.log("[remotion:render] Estimated cost:", costEstimate);
+
     const { renderId, bucketName } = await renderMediaOnLambda({
       region: REMOTION_CONFIG.region,
       functionName: REMOTION_CONFIG.functionName,
@@ -63,20 +87,18 @@ export async function startRender(options: RenderOptions): Promise<{
       },
     });
 
-    // Estimate cost
-    const price = await estimatePrice({
-      region: REMOTION_CONFIG.region,
-      durationInFrames: 300, // Would come from composition
-      lambdasInvoked: options.concurrency || 10,
+    console.log("[remotion:render] Render started:", {
+      renderId,
+      estimatedCost: costEstimate.estimatedCost,
     });
 
     return {
       renderId,
       bucketName,
-      estimatedCost: price.estimatedCost,
+      estimatedCost: costEstimate.estimatedCost,
     };
   } catch (error) {
-    console.error("Failed to start render:", error);
+    console.error("[remotion:render] Failed to start render:", error);
     throw new Error(
       `Render failed: ${error instanceof Error ? error.message : String(error)}`
     );
@@ -146,34 +168,68 @@ export async function getRenderStatus(renderId: string): Promise<{
 }
 
 /**
- * Estimate rendering cost
+ * Estimate rendering cost using Remotion's official estimatePrice API
+ *
+ * @see https://remotion.dev/docs/lambda/estimateprice
  */
 export async function estimateRenderCost(
   durationInFrames: number,
-  fps: number = 30
+  fps: number = 30,
+  options?: {
+    width?: number;
+    height?: number;
+    memorySizeInMb?: number;
+    diskSizeInMb?: number;
+  }
 ): Promise<{
   estimatedCost: number;
   estimatedTime: number;
   disclaimer: string;
 }> {
   try {
-    const price = await estimatePrice({
+    console.log("[remotion:estimate] Estimating cost for:", {
+      durationInFrames,
+      fps,
+      region: REMOTION_CONFIG.region,
+    });
+
+    // Use official Remotion Lambda estimatePrice API
+    const estimate = await estimatePrice({
       region: REMOTION_CONFIG.region,
       durationInFrames,
-      lambdasInvoked: 10, // Default concurrency
+      fps,
+      width: options?.width || 1920,
+      height: options?.height || 1080,
+      memorySizeInMb: options?.memorySizeInMb || 2048,
+      diskSizeInMb: options?.diskSizeInMb || 2048,
+      lambdaEfficiencyLevel: 0.8, // Typical efficiency for Remotion renders
+    });
+
+    console.log("[remotion:estimate] Official estimate:", {
+      cost: `$${estimate.estimatedCost.toFixed(4)}`,
+      duration: `${estimate.estimatedDuration}ms`,
     });
 
     return {
-      estimatedCost: price.estimatedCost,
-      estimatedTime: price.estimatedTime,
-      disclaimer: price.disclaimer,
+      estimatedCost: estimate.estimatedCost,
+      estimatedTime: Math.ceil(estimate.estimatedDuration / 1000), // Convert ms to seconds
+      disclaimer: "Estimate based on AWS Lambda pricing and typical Remotion efficiency. Actual cost may vary based on composition complexity.",
     };
   } catch (error) {
-    console.error("Failed to estimate cost:", error);
+    console.error("[remotion:estimate] Failed to estimate cost:", error);
+
+    // Fallback to rough estimation if API fails
+    const durationInSeconds = durationInFrames / fps;
+    const baseCost = 0.05; // Rough fallback: $0.05 per 30 seconds
+    const estimatedCost = (durationInSeconds / 30) * baseCost;
+    const estimatedTime = Math.ceil(durationInSeconds / 5); // ~5x realtime
+
+    console.warn("[remotion:estimate] Using fallback estimation");
+
     return {
-      estimatedCost: 0,
-      estimatedTime: 0,
-      disclaimer: "Unable to estimate cost",
+      estimatedCost: Math.max(0.01, estimatedCost),
+      estimatedTime,
+      disclaimer: "Estimate unavailable - using fallback calculation. Actual cost may vary significantly.",
     };
   }
 }

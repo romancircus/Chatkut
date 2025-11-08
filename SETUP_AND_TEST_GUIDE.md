@@ -35,7 +35,7 @@ npm run dev
 
 ### 4. Open Browser
 
-Navigate to http://localhost:3000
+Navigate to http://localhost:3001
 
 ---
 

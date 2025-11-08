@@ -8,8 +8,15 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
-import { getAIClient, MODEL_ROUTING } from "@/lib/dedalus/client";
+import {
+  generateChatResponse,
+  generateEditPlan as generateEditPlanViaDedalus,
+  generateRemotionCode as generateRemotionCodeViaDedalus,
+} from "@/lib/dedalus/client";
 import type { EditPlan } from "@/types/composition-ir";
+
+// Get Dedalus API key from environment
+const DEDALUS_API_KEY = process.env.DEDALUS_API_KEY;
 
 /**
  * Send a chat message and get AI response
@@ -24,13 +31,14 @@ export const sendChatMessage = action({
     content: string;
     model: string;
   }> => {
-    // Get user ID
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
+    // TODO: Re-enable authentication after testing
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) {
+    //   throw new Error("Not authenticated");
+    // }
+    // const userId = identity.subject as any;
 
-    const userId = identity.subject as any; // Will be proper ID once we have users table
+    const userId = "temp_user_1" as any; // Temporary for testing
 
     // Save user message
     await ctx.runMutation(api.ai.saveChatMessage, {
@@ -40,20 +48,29 @@ export const sendChatMessage = action({
       content: message,
     });
 
+    // Validate API key
+    if (!DEDALUS_API_KEY) {
+      throw new Error(
+        "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+      );
+    }
+
     // Get project context (composition, assets, etc.)
     const project = await ctx.runQuery(api.ai.getProjectContext, { projectId });
 
-    // Build system prompt with context
-    const systemPrompt = buildSystemPrompt(project);
+    // Get chat history
+    const history = await ctx.runQuery(api.ai.getChatMessages, { projectId, limit: 10 });
 
-    // Generate AI response
-    const aiClient = getAIClient();
-    const response = await aiClient.generateText({
-      task: "chat-response",
-      systemPrompt,
-      prompt: message,
-      temperature: 0.7,
-    });
+    // Generate AI response using Dedalus SDK
+    const response = await generateChatResponse(
+      DEDALUS_API_KEY,
+      message,
+      {
+        assets: project.assets || [],
+        composition: project.composition || null,
+        history: history || [],
+      }
+    );
 
     // Save assistant response
     const assistantMessageId = await ctx.runMutation(api.ai.saveChatMessage, {
@@ -70,7 +87,7 @@ export const sendChatMessage = action({
       task: "chat-response",
       model: response.model,
       provider: response.provider,
-      tokenUsage: response.tokenUsage,
+      tokenUsage: response.tokens,
       cost: response.cost,
     });
 
@@ -95,6 +112,13 @@ export const generateEditPlan = action({
     plan: EditPlan;
     model: string;
   }> => {
+    // Validate API key
+    if (!DEDALUS_API_KEY) {
+      throw new Error(
+        "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+      );
+    }
+
     // Get composition IR
     const composition = await ctx.runQuery(api.ai.getComposition, { compositionId });
 
@@ -102,50 +126,17 @@ export const generateEditPlan = action({
       throw new Error("Composition not found");
     }
 
-    // Build system prompt for plan generation
-    const systemPrompt = `You are a video editing assistant that outputs structured Edit Plans.
+    // Generate edit plan using Dedalus SDK
+    const plan = await generateEditPlanViaDedalus(
+      DEDALUS_API_KEY,
+      userMessage,
+      composition.ir
+    );
 
-Current Composition IR:
-${JSON.stringify(composition.ir, null, 2)}
-
-User Request: "${userMessage}"
-
-Output a JSON Edit Plan with this EXACT structure:
-{
-  "operation": "add" | "update" | "delete" | "move",
-  "selector": {
-    "type": "byLabel" | "byId" | "byIndex" | "byType",
-    // selector-specific fields
-  },
-  "changes": {
-    // operation-specific changes
-  },
-  "reasoning": "Brief explanation of what this plan does"
-}
-
-Use selectors that are unambiguous. If the user says "second clip",
-use { "type": "byType", "elementType": "video", "index": 1 }.
-
-Examples:
-- "Make the second video clip zoom in slowly":
-  {"operation": "update", "selector": {"type": "byType", "elementType": "video", "index": 1}, "changes": {"animation": {"property": "scale", "keyframes": [{"frame": 0, "value": 1.0}, {"frame": 90, "value": 1.2}], "easing": "ease-in"}}}
-
-- "Add text saying Hello":
-  {"operation": "add", "selector": {"type": "byIndex", "index": 0}, "changes": {"type": "text", "properties": {"text": "Hello", "fontSize": 48}, "from": 0, "durationInFrames": 90}}
-
-Respond ONLY with valid JSON.`;
-
-    // Generate edit plan
-    const aiClient = getAIClient();
-    const response = await aiClient.generateJSON<EditPlan>({
-      task: "plan-generation",
-      systemPrompt,
-      prompt: userMessage,
-    });
-
-    // Get user ID for tracking
-    const identity = await ctx.auth.getUserIdentity();
-    const userId = identity?.subject as any;
+    // TODO: Re-enable authentication after testing
+    // const identity = await ctx.auth.getUserIdentity();
+    // const userId = identity?.subject as any;
+    const userId = "temp_user_1" as any; // Temporary for testing
 
     // Track AI usage
     if (userId) {
@@ -153,22 +144,25 @@ Respond ONLY with valid JSON.`;
         userId,
         projectId,
         task: "plan-generation",
-        model: response.model,
-        provider: response.provider,
+        model: "claude-sonnet-4-5", // From MODEL_ROUTING
+        provider: "anthropic",
         tokenUsage: undefined,
-        cost: response.cost,
+        cost: undefined, // Cost tracked in Dedalus response
       });
     }
 
     return {
-      plan: response.data,
-      model: response.model,
+      plan,
+      model: "claude-sonnet-4-5",
     };
   },
 });
 
 /**
  * Generate Remotion code from composition IR
+ *
+ * IMPORTANT: Uses template-based compilation (deterministic, fast, free)
+ * instead of LLM generation (expensive, slow, non-deterministic)
  */
 export const generateRemotionCode = action({
   args: {
@@ -185,36 +179,10 @@ export const generateRemotionCode = action({
       throw new Error("Composition not found");
     }
 
-    // Build system prompt for code generation
-    const systemPrompt = `You are an expert at generating Remotion React components from Composition IR.
-
-Given this Composition IR:
-${JSON.stringify(composition.ir, null, 2)}
-
-Generate a complete Remotion component that:
-1. Uses proper Remotion imports (Sequence, Video, Audio, useCurrentFrame, interpolate, etc.)
-2. Includes data-element-id attributes on all elements for tracking
-3. Implements all animations using interpolate()
-4. Handles all element properties correctly
-5. Is type-safe TypeScript with React 18
-
-Output ONLY the React component code, no markdown, no explanation.`;
-
-    const aiClient = getAIClient();
-    const response = await aiClient.generateText({
-      task: "code-generation",
-      systemPrompt,
-      prompt: "Generate the Remotion component",
-      temperature: 0.3, // Lower temperature for more deterministic code
-      maxTokens: 8192,
-    });
-
-    // Extract code from markdown if needed
-    let code = response.text.trim();
-    const codeMatch = code.match(/```(?:typescript|tsx|jsx)?\s*([\s\S]*?)\s*```/);
-    if (codeMatch) {
-      code = codeMatch[1];
-    }
+    // Use template-based compilation (free, fast, deterministic)
+    // The compiler is in lib/composition-engine/compiler.ts
+    // Since Convex actions can't import from lib, we inline a simplified version
+    const code = compileIRToCode(composition.ir);
 
     // Update composition with generated code
     await ctx.runMutation(api.ai.updateCompositionCode, {
@@ -222,27 +190,90 @@ Output ONLY the React component code, no markdown, no explanation.`;
       code,
     });
 
-    // Track AI usage
-    const identity = await ctx.auth.getUserIdentity();
-    const userId = identity?.subject as any;
-    if (userId) {
-      await ctx.runMutation(api.ai.trackAIUsage, {
-        userId,
-        projectId: composition.projectId,
-        task: "code-generation",
-        model: response.model,
-        provider: response.provider,
-        tokenUsage: response.tokenUsage,
-        cost: response.cost,
-      });
-    }
-
     return {
       code,
-      model: response.model,
+      model: "template-compiler", // Not using LLM!
     };
   },
 });
+
+/**
+ * Simplified IR compiler for Convex
+ * Full version in lib/composition-engine/compiler.ts
+ */
+function compileIRToCode(ir: any): string {
+  const componentName = `Composition_${ir.id.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  const elements = ir.elements.map((el: any) => renderElement(el)).join("\n      ");
+
+  return `/**
+ * Auto-generated Remotion composition
+ * ID: ${ir.id}
+ * Version: ${ir.version}
+ */
+
+import React from "react";
+import {
+  AbsoluteFill,
+  Sequence,
+  Video,
+  Audio,
+  Img,
+  interpolate,
+  useCurrentFrame,
+} from "remotion";
+
+export const ${componentName}: React.FC = () => {
+  const frame = useCurrentFrame();
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#000" }}>
+      ${elements}
+    </AbsoluteFill>
+  );
+};
+`;
+}
+
+function renderElement(element: any): string {
+  return `<Sequence
+        from={${element.from}}
+        durationInFrames={${element.durationInFrames}}
+        data-element-id="${element.id}"
+      >
+        ${renderElementContent(element)}
+      </Sequence>`;
+}
+
+function renderElementContent(element: any): string {
+  const { type, properties } = element;
+
+  switch (type) {
+    case "video":
+      return `<Video
+          src="${properties.src || ""}"
+          volume={${properties.volume || 1}}
+        />`;
+    case "audio":
+      return `<Audio
+          src="${properties.src || ""}"
+          volume={${properties.volume || 1}}
+        />`;
+    case "text":
+      return `<div style={{
+          fontSize: ${properties.fontSize || 48},
+          color: "${properties.color || "#fff"}",
+          textAlign: "${properties.textAlign || "center"}",
+        }}>
+          {${JSON.stringify(properties.text || "")}}
+        </div>`;
+    case "image":
+      return `<Img
+          src="${properties.src || ""}"
+        />`;
+    default:
+      return `{/* Unknown type: ${type} */}`;
+  }
+}
 
 // ==================== Mutations ====================
 

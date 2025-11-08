@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 export default function HomePage() {
   const router = useRouter();
+  const [showModal, setShowModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
@@ -20,12 +21,15 @@ export default function HomePage() {
     e.preventDefault();
     if (!newProjectName.trim()) return;
 
+    console.log("Creating project:", newProjectName);
     setIsCreating(true);
     try {
+      console.log("Calling createProject mutation...");
       const projectId = await createProject({
         name: newProjectName.trim(),
         description: newProjectDescription.trim() || undefined,
       });
+      console.log("Project created with ID:", projectId);
 
       // Navigate to the new project
       router.push(`/project/${projectId}`);
@@ -46,7 +50,7 @@ export default function HomePage() {
               <p className="text-neutral-400">AI-Powered Video Editor</p>
             </div>
             <button
-              onClick={() => setIsCreating(true)}
+              onClick={() => setShowModal(true)}
               className="btn-primary flex items-center space-x-2"
             >
               <PlusIcon className="w-5 h-5" />
@@ -70,7 +74,7 @@ export default function HomePage() {
               Create your first project to get started
             </p>
             <button
-              onClick={() => setIsCreating(true)}
+              onClick={() => setShowModal(true)}
               className="btn-primary flex items-center space-x-2"
             >
               <PlusIcon className="w-5 h-5" />
@@ -79,7 +83,7 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {projects.map((project) => (
+            {projects.map((project: any) => (
               <ProjectCard
                 key={project._id}
                 project={project}
@@ -91,7 +95,7 @@ export default function HomePage() {
       </div>
 
       {/* Create Project Modal */}
-      {isCreating && (
+      {showModal && (
         <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="card max-w-md w-full mx-4">
             <h2 className="text-2xl font-bold mb-6">Create New Project</h2>
@@ -128,6 +132,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
+                    setShowModal(false);
                     setIsCreating(false);
                     setNewProjectName("");
                     setNewProjectDescription("");

@@ -78,7 +78,7 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
           </div>
         )}
 
-        {messages?.map((message) => (
+        {messages?.map((message: any) => (
           <ChatMessage
             key={message._id}
             role={message.role}

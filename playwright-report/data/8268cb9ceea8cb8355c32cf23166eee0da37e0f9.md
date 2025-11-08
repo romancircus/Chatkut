@@ -1,0 +1,47 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - button "Library" [ref=e6] [cursor=pointer]:
+          - img [ref=e7]
+          - generic [ref=e9]: Library
+        - button "Upload" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+          - generic [ref=e14]: Upload
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - heading "Asset Library" [level=2] [ref=e18]
+          - generic [ref=e19]:
+            - button "All" [ref=e20] [cursor=pointer]
+            - button "Videos" [ref=e21] [cursor=pointer]
+            - button "Audio" [ref=e22] [cursor=pointer]
+            - button "Images" [ref=e23] [cursor=pointer]
+        - generic [ref=e26]:
+          - paragraph [ref=e27]: No assets yet
+          - paragraph [ref=e28]: Upload some videos, images, or audio files to get started
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - button [ref=e31] [cursor=pointer]:
+          - img [ref=e32]
+        - heading "Delete Test 1762575696266" [level=1] [ref=e35]
+        - button [ref=e36] [cursor=pointer]:
+          - img [ref=e37]
+      - generic [ref=e39]:
+        - generic [ref=e41]:
+          - paragraph [ref=e42]: No Composition Yet
+          - paragraph [ref=e43]: Start chatting to create your first composition
+        - generic [ref=e45]:
+          - generic [ref=e48]:
+            - paragraph [ref=e49]: Start a conversation
+            - paragraph [ref=e50]: Ask me to create or edit a video using natural language
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - textbox "Describe what you want to create or edit..." [ref=e53]
+              - button [disabled] [ref=e54]:
+                - img [ref=e55]
+            - paragraph [ref=e58]: Press Enter to send, Shift+Enter for new line
+  - alert [ref=e59]
+```

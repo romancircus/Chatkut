@@ -32,7 +32,7 @@ export function RenderPanel({ compositionId, projectId }: RenderPanelProps) {
   const [quality, setQuality] = useState(80);
 
   const composition = useQuery(api.compositions.get, { compositionId });
-  const renderJobs = useQuery(api.rendering.listRenderJobs, { projectId, limit: 5 });
+  const renderJobs = useQuery(api.rendering.listRenderJobs, { compositionId, limit: 5 });
   const startRender = useAction(api.rendering.startRender);
   const estimateCost = useAction(api.rendering.estimateRenderCost);
 
@@ -164,7 +164,7 @@ export function RenderPanel({ compositionId, projectId }: RenderPanelProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {renderJobs.map((job) => (
+              {renderJobs.map((job: any) => (
                 <RenderJobCard key={job._id} job={job} />
               ))}
             </div>

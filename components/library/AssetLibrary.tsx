@@ -20,7 +20,7 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
   const assets = useQuery(api.media.listAssets, { projectId });
   const deleteAsset = useAction(api.media.deleteAsset);
 
-  const filteredAssets = assets?.filter((asset) =>
+  const filteredAssets = assets?.filter((asset: any) =>
     filterType === "all" ? true : asset.type === filterType
   );
 
@@ -31,7 +31,7 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
     }
   };
 
-  const selectedAsset = assets?.find((a) => a._id === selectedAssetId);
+  const selectedAsset = assets?.find((a: any) => a._id === selectedAssetId);
 
   return (
     <div className="flex flex-col h-full">
@@ -74,7 +74,7 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredAssets.map((asset) => (
+            {filteredAssets.map((asset: any) => (
               <AssetCard
                 key={asset._id}
                 asset={asset}

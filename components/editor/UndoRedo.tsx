@@ -134,7 +134,7 @@ export function HistoryPanel({ compositionId }: UndoRedoProps) {
   return (
     <div className="space-y-2 p-4">
       <h3 className="text-sm font-semibold text-neutral-400 mb-3">History</h3>
-      {history.map((snapshot, index) => (
+      {history.map((snapshot: any, index: number) => (
         <button
           key={snapshot._id}
           onClick={() => handleRestore(snapshot._id)}

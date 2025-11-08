@@ -88,7 +88,7 @@ function executeAdd(ir: CompositionIR, plan: EditPlan): ExecutionResult {
 
   // Add animations if specified
   if (plan.changes.animations) {
-    newElement.animations = plan.changes.animations as Animation;
+    newElement.animations = plan.changes.animations as Animation[];
   }
 
   // Clone IR and add element
@@ -180,7 +180,7 @@ function executeUpdate(ir: CompositionIR, plan: EditPlan): ExecutionResult {
 
       // Update animation
       if (plan.changes.animations !== undefined) {
-        updated.animations = plan.changes.animations as Animation;
+        updated.animations = plan.changes.animations as Animation[];
       }
 
       return updated;

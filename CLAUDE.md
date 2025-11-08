@@ -2,6 +2,142 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 STANDING ORDERS - Read This First
+
+### 1. Documentation-First Development (MANDATORY)
+
+**BEFORE writing any code that integrates with external services or libraries:**
+
+1. **ALWAYS use Context7 to fetch official documentation first**
+2. **Read the docs COMPLETELY before proposing solutions**
+3. **Base implementations on official code examples, not assumptions**
+4. **Verify API endpoints, configuration patterns, and required parameters**
+
+**Example:** When implementing Cloudflare Stream uploads, we wasted hours iterating on bugs that would have been prevented by reading the docs first. The TUS upload configuration, required headers, metadata format, and response header parsing were all documented.
+
+**How to use Context7:**
+```typescript
+// Step 1: Resolve library ID
+mcp__context7__resolve-library-id({ libraryName: "cloudflare stream" })
+
+// Step 2: Get documentation with specific topic
+mcp__context7__get-library-docs({
+  context7CompatibleLibraryID: "/llmstxt/developers_cloudflare_com-stream-llms-full.txt",
+  topic: "TUS upload API direct upload video streaming",
+  tokens: 10000
+})
+```
+
+### 2. Avoid Iterative Debugging - Plan Comprehensively
+
+**DON'T:** Make small changes, test, get error, make another small change, repeat
+**DO:** Analyze the full problem, consult docs, implement complete solution
+
+**Checklist before implementing:**
+- [ ] Have I read the official documentation?
+- [ ] Do I understand the complete flow (not just one API call)?
+- [ ] Have I identified ALL required configuration parameters?
+- [ ] Do I know what success looks like (logs, response format)?
+- [ ] Have I checked for environment variables or credentials needed?
+
+### 3. Reference Core Documentation Libraries
+
+**Always consult these via Context7 before implementing features:**
+
+| Technology | Library ID | Use For |
+|------------|-----------|---------|
+| **Cloudflare Stream** | `/llmstxt/developers_cloudflare_com-stream-llms-full.txt` | Video uploads, HLS, TUS protocol |
+| **Cloudflare R2** | `/llmstxt/developers_cloudflare_r2_llms-full_txt` | Object storage, presigned URLs |
+| **Convex** | Search for "convex" | Real-time database, serverless functions |
+| **Remotion** | Search for "remotion" | React-based video rendering |
+| **Next.js** | Built-in MCP: `nextjs_docs` | App Router, Server Components |
+| **TUS Protocol** | Search for "tus" | Resumable uploads |
+| **Dedalus AI** | Search for "dedalus" | Multi-model routing |
+
+### 4. Environment Variable Architecture
+
+**CRITICAL DISTINCTION:**
+
+- **Convex Backend (Cloud):** Variables set via `npx convex env set KEY value`
+  - Runs in Convex's cloud infrastructure
+  - `.env.local` files are IGNORED
+  - Access with `process.env.KEY`
+
+- **Next.js Frontend (Browser/Server):** Variables in `.env.local`
+  - Browser needs `NEXT_PUBLIC_` prefix
+  - Server-side can use any name
+  - Never commit `.env.local` to git
+
+**When implementing features that need credentials:**
+1. Determine WHERE the code runs (Convex cloud vs Next.js)
+2. Set variables in the correct environment
+3. Document in `.env.example` with comments
+4. Update README.md setup instructions
+
+### 5. Comprehensive Logging Strategy
+
+**ALWAYS add detailed console logs when implementing new features:**
+
+```typescript
+// Backend (Convex)
+console.log("[module:function] Action description:", { relevantData });
+console.log("[module:function] Step 1 complete:", result);
+console.error("[module:function] Error occurred:", error);
+
+// Frontend (React)
+console.log("[ComponentName] Event description:", data);
+console.log("[ComponentName] Progress:", { current, total });
+```
+
+**Why:** Logs helped us identify the exact point of failure (environment variables missing, wrong API endpoint, etc.)
+
+### 6. Error Handling - Be Specific
+
+**DON'T:**
+```typescript
+throw new Error("Upload failed");
+```
+
+**DO:**
+```typescript
+if (!response.ok) {
+  const error = await response.text();
+  throw new Error(`Cloudflare Stream API error (${response.status}): ${error}`);
+}
+```
+
+Include:
+- Service name (Cloudflare, Convex, etc.)
+- HTTP status code if applicable
+- Original error message
+- Context about what was being attempted
+
+### 7. Implementation Documentation
+
+**After implementing any complex feature, create a markdown doc:**
+
+- Explain the architecture and flow
+- Document all configuration requirements
+- Include troubleshooting section
+- Provide testing checklist
+- Reference official documentation
+
+**Examples in this repo:**
+- `CLOUDFLARE_STREAM_IMPLEMENTATION.md`
+- `CONVEX_ENV_VARS.md`
+
+### 8. Testing Before Declaring Complete
+
+**Never say "this should work" - verify it works:**
+
+1. Test happy path (expected use case)
+2. Test error cases (missing env vars, network errors)
+3. Check logs for unexpected warnings
+4. Verify all environment variables are documented
+5. Test with realistic data (large files, multiple items)
+
+---
+
 ## Project Overview
 
 ChatKut is an open-source chat-based video editor that provides a natural language interface for video editing. It uses Remotion for video rendering, Dedalus SDK for multi-model AI orchestration, and implements a deterministic Plan-Execute-Patch editing architecture.

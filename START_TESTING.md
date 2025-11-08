@@ -39,7 +39,7 @@ npm run dev
 
 **Expected output:**
 ```
-- ready started server on 0.0.0.0:3000, url: http://localhost:3000
+- ready started server on 0.0.0.0:3001, url: http://localhost:3001
 - event compiled client and server successfully
 ```
 
@@ -49,7 +49,7 @@ npm run dev
 
 Open your browser and navigate to:
 
-**http://localhost:3000**
+**http://localhost:3001**
 
 You should see the ChatKut homepage with:
 - Dark theme background
@@ -127,13 +127,13 @@ npx convex dev --debug
 
 In terminal 2, you should see:
 ```
-ready - started server on 0.0.0.0:3000
+ready - started server on 0.0.0.0:3001
 ```
 
-If port 3000 is busy:
+If port 3001 is busy:
 ```bash
-npm run dev -- -p 3001
-# Then open http://localhost:3001
+npm run dev -- -p 3002
+# Then open http://localhost:3002
 ```
 
 ### Check Browser Console
@@ -182,8 +182,8 @@ npx convex logs --tail
 ## 🎉 Success Checklist
 
 - [ ] Convex dev server running without errors
-- [ ] Next.js dev server running on port 3000
-- [ ] Homepage loads at http://localhost:3000
+- [ ] Next.js dev server running on port 3001
+- [ ] Homepage loads at http://localhost:3001
 - [ ] Can create a new project
 - [ ] Project dashboard loads with 3 panels
 - [ ] Chat interface is visible

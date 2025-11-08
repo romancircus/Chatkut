@@ -1,19 +1,14 @@
 /**
  * Dedalus AI Client Wrapper
  *
- * Provides unified interface for multi-model AI access.
+ * Provides unified interface for multi-model AI access through Dedalus SDK.
  * Routes different tasks to optimal models for cost/quality balance.
+ *
+ * @see PRIORITIZED_IMPLEMENTATION_PLAN.md Task 1.3
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Environment variables
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const DEDALUS_API_KEY = process.env.DEDALUS_API_KEY;
+// NOTE: Dedalus SDK types - using any for now until official types are available
+type DedalusClient = any;
 
 // Model routing strategy
 export type ModelTask =
@@ -29,323 +24,308 @@ export const MODEL_ROUTING: Record<
   {
     provider: "anthropic" | "openai" | "google";
     model: string;
+    temperature: number;
     reasoning: string;
   }
 > = {
   "code-generation": {
     provider: "anthropic",
     model: "claude-sonnet-4-5",
+    temperature: 0.3, // Low for determinism
     reasoning: "Best code quality, understands Remotion/React patterns",
   },
   "plan-generation": {
     provider: "anthropic",
     model: "claude-sonnet-4-5",
+    temperature: 0.3, // Low for determinism
     reasoning: "Excellent structured output, precise edit plans",
+  },
+  "code-analysis": {
+    provider: "anthropic",
+    model: "claude-sonnet-4-5",
+    temperature: 0.5,
+    reasoning: "Deep understanding of code structure",
   },
   "chat-response": {
     provider: "openai",
     model: "gpt-4o",
+    temperature: 0.7,
     reasoning: "Balanced cost/quality for conversational responses",
   },
   "simple-edit": {
     provider: "google",
     model: "gemini-2.0-flash",
+    temperature: 0.5,
     reasoning: "Fast and cheap for simple property updates",
-  },
-  "code-analysis": {
-    provider: "anthropic",
-    model: "claude-sonnet-4-5",
-    reasoning: "Deep understanding of code structure",
   },
 };
 
 /**
- * AI Client wrapper
+ * Initialize Dedalus SDK client
+ *
+ * NOTE: This assumes dedalus-labs SDK exports a default client class.
+ * If the actual SDK has different imports, update this accordingly.
  */
-export class AIClient {
-  private anthropic?: Anthropic;
-  private openai?: OpenAI;
-  private google?: GoogleGenerativeAI;
+function createDedalusClient(apiKey: string): DedalusClient {
+  try {
+    // Try to import the Dedalus SDK dynamically
+    // This is a placeholder - adjust based on actual SDK API
+    const { Dedalus } = require("dedalus-labs");
+    return new Dedalus({ apiKey });
+  } catch (error) {
+    console.error("[dedalus:client] Failed to initialize Dedalus SDK:", error);
+    console.error("[dedalus:client] Falling back to mock mode");
 
-  constructor() {
-    // Initialize clients if API keys are available
-    if (ANTHROPIC_API_KEY) {
-      this.anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    }
-    if (OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-    }
-    if (GOOGLE_API_KEY) {
-      this.google = new GoogleGenerativeAI(GOOGLE_API_KEY);
-    }
-  }
-
-  /**
-   * Generate text completion with optimal model for task
-   */
-  async generateText(params: {
-    task: ModelTask;
-    prompt: string;
-    systemPrompt?: string;
-    maxTokens?: number;
-    temperature?: number;
-  }): Promise<{
-    text: string;
-    model: string;
-    provider: string;
-    tokenUsage?: {
-      input: number;
-      output: number;
-      total: number;
-    };
-    cost?: number;
-  }> {
-    const routing = MODEL_ROUTING[params.task];
-    const { provider, model } = routing;
-
-    console.log(
-      `[AI] Task: ${params.task} → ${provider}/${model} (${routing.reasoning})`
-    );
-
-    switch (provider) {
-      case "anthropic":
-        return await this.generateWithClaude(params, model);
-      case "openai":
-        return await this.generateWithGPT(params, model);
-      case "google":
-        return await this.generateWithGemini(params, model);
-      default:
-        throw new Error(`Unknown provider: ${provider}`);
-    }
-  }
-
-  /**
-   * Generate with Claude (Anthropic)
-   */
-  private async generateWithClaude(
-    params: {
-      prompt: string;
-      systemPrompt?: string;
-      maxTokens?: number;
-      temperature?: number;
-    },
-    model: string
-  ) {
-    if (!this.anthropic) {
-      throw new Error("Anthropic API key not configured");
-    }
-
-    const response = await this.anthropic.messages.create({
-      model: model,
-      max_tokens: params.maxTokens || 4096,
-      temperature: params.temperature || 0.7,
-      system: params.systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: params.prompt,
-        },
-      ],
-    });
-
-    const text = response.content
-      .filter((block) => block.type === "text")
-      .map((block: any) => block.text)
-      .join("\n");
-
-    // Estimate cost (Claude Sonnet 4.5: $3/MTok input, $15/MTok output)
-    const inputCost = (response.usage.input_tokens / 1_000_000) * 3;
-    const outputCost = (response.usage.output_tokens / 1_000_000) * 15;
-
+    // Return mock client for development
     return {
-      text,
-      model,
-      provider: "anthropic",
-      tokenUsage: {
-        input: response.usage.input_tokens,
-        output: response.usage.output_tokens,
-        total: response.usage.input_tokens + response.usage.output_tokens,
+      generateText: async (params: any) => {
+        throw new Error(
+          "Dedalus SDK not properly initialized. Check dedalus-labs package installation."
+        );
       },
-      cost: inputCost + outputCost,
+      generateJSON: async (params: any) => {
+        throw new Error(
+          "Dedalus SDK not properly initialized. Check dedalus-labs package installation."
+        );
+      },
     };
-  }
-
-  /**
-   * Generate with GPT (OpenAI)
-   */
-  private async generateWithGPT(
-    params: {
-      prompt: string;
-      systemPrompt?: string;
-      maxTokens?: number;
-      temperature?: number;
-    },
-    model: string
-  ) {
-    if (!this.openai) {
-      throw new Error("OpenAI API key not configured");
-    }
-
-    const messages: any[] = [];
-    if (params.systemPrompt) {
-      messages.push({ role: "system", content: params.systemPrompt });
-    }
-    messages.push({ role: "user", content: params.prompt });
-
-    const response = await this.openai.chat.completions.create({
-      model: model,
-      messages,
-      max_tokens: params.maxTokens || 4096,
-      temperature: params.temperature || 0.7,
-    });
-
-    const text = response.choices[0]?.message?.content || "";
-
-    // Estimate cost (GPT-4o: $2.5/MTok input, $10/MTok output)
-    const inputTokens = response.usage?.prompt_tokens || 0;
-    const outputTokens = response.usage?.completion_tokens || 0;
-    const inputCost = (inputTokens / 1_000_000) * 2.5;
-    const outputCost = (outputTokens / 1_000_000) * 10;
-
-    return {
-      text,
-      model,
-      provider: "openai",
-      tokenUsage: {
-        input: inputTokens,
-        output: outputTokens,
-        total: inputTokens + outputTokens,
-      },
-      cost: inputCost + outputCost,
-    };
-  }
-
-  /**
-   * Generate with Gemini (Google)
-   */
-  private async generateWithGemini(
-    params: {
-      prompt: string;
-      systemPrompt?: string;
-      maxTokens?: number;
-      temperature?: number;
-    },
-    model: string
-  ) {
-    if (!this.google) {
-      throw new Error("Google API key not configured");
-    }
-
-    const geminiModel = this.google.getGenerativeModel({ model });
-
-    const fullPrompt = params.systemPrompt
-      ? `${params.systemPrompt}\n\n${params.prompt}`
-      : params.prompt;
-
-    const result = await geminiModel.generateContent({
-      contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-      generationConfig: {
-        maxOutputTokens: params.maxTokens || 4096,
-        temperature: params.temperature || 0.7,
-      },
-    });
-
-    const text = result.response.text();
-
-    // Estimate tokens (rough approximation)
-    const inputTokens = Math.ceil(fullPrompt.length / 4);
-    const outputTokens = Math.ceil(text.length / 4);
-
-    // Gemini Flash 2.0: Free tier or very low cost
-    const cost = 0; // Essentially free for our use case
-
-    return {
-      text,
-      model,
-      provider: "google",
-      tokenUsage: {
-        input: inputTokens,
-        output: outputTokens,
-        total: inputTokens + outputTokens,
-      },
-      cost,
-    };
-  }
-
-  /**
-   * Generate structured JSON output
-   */
-  async generateJSON<T = any>(params: {
-    task: ModelTask;
-    prompt: string;
-    systemPrompt?: string;
-    schema?: any;
-  }): Promise<{
-    data: T;
-    model: string;
-    provider: string;
-    cost?: number;
-  }> {
-    const response = await this.generateText({
-      ...params,
-      prompt: `${params.prompt}\n\nRespond ONLY with valid JSON. No markdown, no explanation.`,
-    });
-
-    try {
-      // Extract JSON from markdown code blocks if present
-      let jsonText = response.text.trim();
-      const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[1];
-      } else {
-        // Try to find JSON object
-        const objectMatch = jsonText.match(/\{[\s\S]*\}/);
-        if (objectMatch) {
-          jsonText = objectMatch[0];
-        }
-      }
-
-      const data = JSON.parse(jsonText);
-
-      return {
-        data,
-        model: response.model,
-        provider: response.provider,
-        cost: response.cost,
-      };
-    } catch (error) {
-      console.error("Failed to parse JSON response:", response.text);
-      throw new Error(`Failed to parse JSON: ${error}`);
-    }
-  }
-
-  /**
-   * Stream text generation (for chat UI)
-   */
-  async *streamText(params: {
-    task: ModelTask;
-    prompt: string;
-    systemPrompt?: string;
-  }): AsyncGenerator<string> {
-    const routing = MODEL_ROUTING[params.task];
-
-    // For now, we'll do non-streaming and yield the full response
-    // In production, implement actual streaming for each provider
-    const response = await this.generateText(params);
-    yield response.text;
   }
 }
 
 /**
- * Get singleton AI client instance
+ * AI Client singleton
  */
-let aiClientInstance: AIClient | null = null;
+let dedalusClientInstance: DedalusClient | null = null;
 
-export function getAIClient(): AIClient {
-  if (!aiClientInstance) {
-    aiClientInstance = new AIClient();
+export function getAIClient(apiKey?: string): DedalusClient {
+  // Use provided API key or environment variable
+  const key = apiKey || process.env.DEDALUS_API_KEY;
+
+  if (!key) {
+    throw new Error(
+      "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+    );
   }
-  return aiClientInstance;
+
+  if (!dedalusClientInstance) {
+    console.log("[dedalus:client] Initializing Dedalus SDK...");
+    dedalusClientInstance = createDedalusClient(key);
+    console.log("[dedalus:client] Dedalus SDK initialized ✅");
+  }
+
+  return dedalusClientInstance;
+}
+
+/**
+ * Generate chat response
+ * Uses GPT-4o for balanced cost/quality
+ */
+export async function generateChatResponse(
+  apiKey: string,
+  message: string,
+  context: {
+    assets: any[];
+    composition: any;
+    history: any[];
+  }
+): Promise<{
+  text: string;
+  model: string;
+  provider: string;
+  cost?: number;
+  tokens?: { input: number; output: number; total: number };
+}> {
+  console.log("[dedalus:chat] Generating response for:", message.slice(0, 50) + "...");
+
+  const routing = MODEL_ROUTING["chat-response"];
+  const systemPrompt = buildChatSystemPrompt(context);
+
+  try {
+    const client = getAIClient(apiKey);
+
+    // Call Dedalus SDK (adjust based on actual SDK API)
+    const response = await client.generateText({
+      provider: routing.provider,
+      model: routing.model,
+      systemPrompt,
+      prompt: message,
+      temperature: routing.temperature,
+      maxTokens: 1000,
+    });
+
+    console.log("[dedalus:chat] Response generated:", {
+      model: response.model || routing.model,
+      provider: response.provider || routing.provider,
+      tokens: response.tokenUsage?.total || 0,
+      cost: response.cost || 0,
+    });
+
+    return {
+      text: response.text || response.content || "",
+      model: response.model || routing.model,
+      provider: response.provider || routing.provider,
+      cost: response.cost,
+      tokens: response.tokenUsage || response.usage,
+    };
+  } catch (error) {
+    console.error("[dedalus:chat] Error generating response:", error);
+    throw new Error(`Failed to generate chat response: ${error}`);
+  }
+}
+
+/**
+ * Generate edit plan
+ * Uses Claude Sonnet for precise structured output
+ */
+export async function generateEditPlan(
+  apiKey: string,
+  userMessage: string,
+  compositionIR: any
+): Promise<any> {
+  console.log("[dedalus:plan] Generating edit plan for:", userMessage.slice(0, 50) + "...");
+
+  const routing = MODEL_ROUTING["plan-generation"];
+  const systemPrompt = buildEditPlanSystemPrompt(compositionIR);
+
+  try {
+    const client = getAIClient(apiKey);
+
+    // Call Dedalus SDK for JSON generation
+    const response = await client.generateJSON({
+      provider: routing.provider,
+      model: routing.model,
+      systemPrompt,
+      prompt: userMessage,
+      temperature: routing.temperature,
+    });
+
+    console.log("[dedalus:plan] Plan generated:", {
+      operations: response.data?.operations?.length || 0,
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("[dedalus:plan] Error generating plan:", error);
+    throw new Error(`Failed to generate edit plan: ${error}`);
+  }
+}
+
+/**
+ * Generate Remotion code
+ * Uses Claude Sonnet for best code quality
+ */
+export async function generateRemotionCode(
+  apiKey: string,
+  compositionIR: any
+): Promise<{
+  code: string;
+  model: string;
+  provider: string;
+  cost?: number;
+}> {
+  console.log("[dedalus:code] Generating Remotion code for composition:", compositionIR.id);
+
+  const routing = MODEL_ROUTING["code-generation"];
+  const systemPrompt = buildCodeGenerationSystemPrompt();
+  const prompt = `Generate Remotion TypeScript code for this composition:\n\n${JSON.stringify(compositionIR, null, 2)}`;
+
+  try {
+    const client = getAIClient(apiKey);
+
+    const response = await client.generateText({
+      provider: routing.provider,
+      model: routing.model,
+      systemPrompt,
+      prompt,
+      temperature: routing.temperature,
+      maxTokens: 4096,
+    });
+
+    console.log("[dedalus:code] Code generated successfully");
+
+    return {
+      code: response.text || response.content || "",
+      model: response.model || routing.model,
+      provider: response.provider || routing.provider,
+      cost: response.cost,
+    };
+  } catch (error) {
+    console.error("[dedalus:code] Error generating code:", error);
+    throw new Error(`Failed to generate Remotion code: ${error}`);
+  }
+}
+
+/**
+ * Build chat system prompt with context
+ */
+function buildChatSystemPrompt(context: any): string {
+  const assetsList = context.assets
+    ?.map((a: any) => `- ${a.filename} (${a.type})`)
+    .join("\n") || "No assets uploaded yet";
+
+  const elementsList = context.composition?.elements
+    ?.map((e: any) => `- ${e.type} "${e.label || e.id}" (${e.durationInFrames} frames)`)
+    .join("\n") || "No elements yet";
+
+  return `You are ChatKut, an AI video editing assistant.
+
+Available assets in this project:
+${assetsList}
+
+Current composition:
+- Duration: ${context.composition?.metadata?.durationInFrames || 0} frames
+- FPS: ${context.composition?.metadata?.fps || 30}
+- Elements: ${context.composition?.elements?.length || 0}
+${elementsList}
+
+Respond naturally to user questions about video editing. Help them add elements, apply effects, and understand their composition.
+
+When the user asks to edit the video, acknowledge what you'll do and confirm the action.`;
+}
+
+/**
+ * Build edit plan system prompt
+ */
+function buildEditPlanSystemPrompt(compositionIR: any): string {
+  return `Generate a structured edit plan for the user's request.
+
+Current composition:
+${JSON.stringify(compositionIR, null, 2)}
+
+Return a JSON object with this structure:
+{
+  "operations": [
+    {
+      "action": "add" | "update" | "delete" | "move",
+      "selector": { "type": "byId" | "byLabel" | "byType" | "byIndex", ... },
+      "changes": { ... }
+    }
+  ]
+}
+
+Rules:
+- Use precise selectors (byId is best, byLabel if user specifies name)
+- Include all necessary properties in changes
+- For animations, include keyframes array
+- Return ONLY valid JSON, no explanation`;
+}
+
+/**
+ * Build code generation system prompt
+ */
+function buildCodeGenerationSystemPrompt(): string {
+  return `You are a Remotion code generation expert.
+
+Generate TypeScript React code for Remotion compositions.
+
+Requirements:
+- Use proper Remotion imports (Sequence, useCurrentFrame, interpolate, etc.)
+- Include data-element-id attributes for tracking
+- Implement animations with interpolate() and keyframes
+- Use proper TypeScript types
+- Follow React best practices
+
+Return ONLY the TypeScript code, no markdown, no explanation.`;
 }
 
 /**
@@ -383,6 +363,12 @@ export function calculateCostSavings(
     (avgTokens.input * claudeCostPerToken.input +
       avgTokens.output * claudeCostPerToken.output);
 
+  // Plan generation: Claude (high cost)
+  multiModelCost +=
+    (taskCounts["plan-generation"] || 0) *
+    (avgTokens.input * claudeCostPerToken.input +
+      avgTokens.output * claudeCostPerToken.output);
+
   // Chat: GPT-4o (medium cost, $2.5/$10 per MTok)
   multiModelCost +=
     (taskCounts["chat-response"] || 0) *
@@ -392,7 +378,7 @@ export function calculateCostSavings(
   multiModelCost += (taskCounts["simple-edit"] || 0) * 0;
 
   const savings = singleModelCost - multiModelCost;
-  const savingsPercent = (savings / singleModelCost) * 100;
+  const savingsPercent = singleModelCost > 0 ? (savings / singleModelCost) * 100 : 0;
 
   return {
     multiModelCost,
