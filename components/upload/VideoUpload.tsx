@@ -53,17 +53,16 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
           throw new Error("No upload URL received from Convex");
         }
 
-        // Start TUS upload with Cloudflare Stream configuration
-        // CRITICAL: Cloudflare's Direct Creator Upload URL is NOT a TUS endpoint!
-        // It's a complete, pre-initialized upload URL. We use uploadUrl parameter.
-        // The upload was ALREADY CREATED by Cloudflare - we just upload chunks to it.
+        // Start TUS upload with Cloudflare Stream Direct Creator Upload
+        // The upload was ALREADY CREATED by Cloudflare API - we use uploadUrl parameter
+        // to upload to the pre-created upload resource.
         const upload = new tus.Upload(file, {
-          uploadUrl: uploadUrl, // Use uploadUrl - the upload is already created
+          uploadUrl: uploadUrl, // Use the pre-created upload URL from Cloudflare
           chunkSize: 5 * 1024 * 1024, // 5 MB chunks (Cloudflare minimum)
           retryDelays: [0, 1000, 3000, 5000], // Retry delays
-          // NO metadata - Cloudflare already has metadata from the initial API call
+          uploadDataDuringCreation: true, // Send data immediately (no HEAD request first)
+          // NO metadata - Cloudflare already has it from the Direct Creator Upload API call
           // NO resume - this URL is one-time use
-          // NO removeFingerprintOnSuccess - not needed with uploadUrl
           onError: (error) => {
             console.error("[VideoUpload] Upload failed:", error);
             setUploads((prev) => {
