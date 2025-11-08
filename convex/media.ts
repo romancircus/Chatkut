@@ -6,7 +6,7 @@
  */
 
 import { v } from "convex/values";
-import { action, httpAction, mutation, query } from "./_generated/server";
+import { action, httpAction, mutation, query, internalMutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Webhook } from "svix";
 
@@ -334,8 +334,9 @@ export const createAsset = mutation({
 
 /**
  * Update asset by Stream ID (for webhooks)
+ * Internal mutation - only callable from other Convex functions
  */
-export const updateAssetByStreamId = mutation({
+export const updateAssetByStreamId = internalMutation({
   args: {
     streamId: v.string(),
     status: v.optional(

@@ -193,26 +193,26 @@ export async function estimateRenderCost(
       region: REMOTION_CONFIG.region,
     });
 
-    // Use official Remotion Lambda estimatePrice API
-    const estimate = await estimatePrice({
+    // Calculate duration in seconds
+    const durationInSeconds = durationInFrames / fps;
+
+    // Use Remotion Lambda estimatePrice API
+    // Note: The API returns just a number (cost in USD), not an object
+    const estimatedCostInDollars = await estimatePrice({
       region: REMOTION_CONFIG.region,
-      durationInFrames,
-      fps,
-      width: options?.width || 1920,
-      height: options?.height || 1080,
       memorySizeInMb: options?.memorySizeInMb || 2048,
       diskSizeInMb: options?.diskSizeInMb || 2048,
-      lambdaEfficiencyLevel: 0.8, // Typical efficiency for Remotion renders
+      durationInMilliseconds: durationInSeconds * 1000,
+      lambdasInvoked: 1, // Number of Lambda invocations (1 for simple renders)
     });
 
     console.log("[remotion:estimate] Official estimate:", {
-      cost: `$${estimate.estimatedCost.toFixed(4)}`,
-      duration: `${estimate.estimatedDuration}ms`,
+      cost: `$${estimatedCostInDollars.toFixed(4)}`,
     });
 
     return {
-      estimatedCost: estimate.estimatedCost,
-      estimatedTime: Math.ceil(estimate.estimatedDuration / 1000), // Convert ms to seconds
+      estimatedCost: estimatedCostInDollars,
+      estimatedTime: Math.ceil(durationInSeconds / 5), // Rough estimate: ~5x realtime
       disclaimer: "Estimate based on AWS Lambda pricing and typical Remotion efficiency. Actual cost may vary based on composition complexity.",
     };
   } catch (error) {

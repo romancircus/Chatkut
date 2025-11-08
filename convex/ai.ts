@@ -66,8 +66,8 @@ export const sendChatMessage = action({
       DEDALUS_API_KEY,
       message,
       {
-        assets: project.assets || [],
-        composition: project.composition || null,
+        assets: project?.assets || [],
+        composition: project?.composition || null,
         history: history || [],
       }
     );
