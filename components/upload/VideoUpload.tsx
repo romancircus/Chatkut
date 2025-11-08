@@ -49,19 +49,16 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
 
         console.log("[VideoUpload] Got TUS upload URL:", uploadUrl);
 
-        // Get Cloudflare API token from environment
-        const CLOUDFLARE_STREAM_TOKEN = process.env.NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN;
-
-        if (!CLOUDFLARE_STREAM_TOKEN) {
-          throw new Error("Missing NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN");
+        if (!uploadUrl) {
+          throw new Error("No upload URL received from Convex");
         }
 
-        // Start TUS upload with correct configuration based on Cloudflare docs
+        // Start TUS upload with Cloudflare Stream configuration
+        // Note: Cloudflare returns a complete uploadURL, so we use that directly
+        // We don't need to set endpoint - the uploadURL IS the complete TUS endpoint
         const upload = new tus.Upload(file, {
-          endpoint: uploadUrl, // Use the uploadUrl from Cloudflare
-          headers: {
-            Authorization: `Bearer ${CLOUDFLARE_STREAM_TOKEN}`, // Required for Cloudflare
-          },
+          uploadUrl: uploadUrl, // Use uploadUrl for complete URL (Cloudflare-specific)
+          // No Authorization header needed - the uploadURL is already signed/authorized
           chunkSize: 50 * 1024 * 1024, // 50 MB chunks (Cloudflare requires min 5 MB)
           retryDelays: [0, 3000, 5000, 10000, 20000], // Retry delays from Cloudflare docs
           metadata: {
