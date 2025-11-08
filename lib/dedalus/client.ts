@@ -61,35 +61,106 @@ export const MODEL_ROUTING: Record<
 };
 
 /**
- * Initialize Dedalus SDK client
+ * Initialize Dedalus client with API routing
  *
- * NOTE: This assumes dedalus-labs SDK exports a default client class.
- * If the actual SDK has different imports, update this accordingly.
+ * Uses Dedalus API (https://api.dedalus.ai) to route to different AI providers
  */
 function createDedalusClient(apiKey: string): DedalusClient {
-  try {
-    // Try to import the Dedalus SDK dynamically
-    // This is a placeholder - adjust based on actual SDK API
-    const { Dedalus } = require("dedalus-labs");
-    return new Dedalus({ apiKey });
-  } catch (error) {
-    console.error("[dedalus:client] Failed to initialize Dedalus SDK:", error);
-    console.error("[dedalus:client] Falling back to mock mode");
+  const DEDALUS_API_URL = "https://api.dedalus.ai/v1";
 
-    // Return mock client for development
-    return {
-      generateText: async (params: any) => {
-        throw new Error(
-          "Dedalus SDK not properly initialized. Check dedalus-labs package installation."
-        );
-      },
-      generateJSON: async (params: any) => {
-        throw new Error(
-          "Dedalus SDK not properly initialized. Check dedalus-labs package installation."
-        );
-      },
-    };
-  }
+  return {
+    generateText: async (params: any) => {
+      const { provider, model, systemPrompt, prompt, temperature, maxTokens } = params;
+
+      console.log(`[dedalus:client] Calling ${provider}/${model} via Dedalus API...`);
+
+      const response = await fetch(`${DEDALUS_API_URL}/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          provider,
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ],
+          temperature,
+          max_tokens: maxTokens || 1000,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Dedalus API error (${response.status}): ${error}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        text: data.content || data.text || "",
+        model: data.model || model,
+        provider: data.provider || provider,
+        usage: data.usage || {
+          input: 0,
+          output: 0,
+          total: 0,
+        },
+      };
+    },
+
+    generateJSON: async (params: any) => {
+      const { provider, model, systemPrompt, prompt, temperature } = params;
+
+      console.log(`[dedalus:client] Calling ${provider}/${model} (JSON mode) via Dedalus API...`);
+
+      const response = await fetch(`${DEDALUS_API_URL}/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          provider,
+          model,
+          messages: [
+            { role: "system", content: systemPrompt + "\n\nRespond with valid JSON only." },
+            { role: "user", content: prompt },
+          ],
+          temperature,
+          max_tokens: 2000,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Dedalus API error (${response.status}): ${error}`);
+      }
+
+      const data = await response.json();
+      const text = data.content || data.text || "";
+
+      // Try to parse JSON from response
+      try {
+        const json = JSON.parse(text);
+        return {
+          data: json,
+          model: data.model || model,
+          provider: data.provider || provider,
+        };
+      } catch {
+        // If not valid JSON, return as-is
+        return {
+          data: { text },
+          model: data.model || model,
+          provider: data.provider || provider,
+        };
+      }
+    },
+  };
 }
 
 /**
