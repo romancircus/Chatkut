@@ -26,6 +26,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
 
   const requestUploadUrl = useAction(api.media.requestStreamUploadUrl);
   const updateStreamId = useMutation(api.media.updateAssetStreamId);
+  const checkVideoStatus = useAction(api.media.checkVideoStatus);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     for (const file of acceptedFiles) {
@@ -94,7 +95,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
               return newMap;
             });
           },
-          onSuccess: () => {
+          onSuccess: async () => {
             console.log("[VideoUpload] Upload finished successfully!");
             setUploads((prev) => {
               const newMap = new Map(prev);
@@ -106,20 +107,55 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
               return newMap;
             });
 
-            // Cloudflare Stream will send webhook when ready
-            // For now, mark as complete after a delay
+            // Poll Cloudflare Stream API to check when video is ready
+            console.log("[VideoUpload] Starting status polling...");
+            const pollInterval = setInterval(async () => {
+              try {
+                const result = await checkVideoStatus({ assetId });
+                console.log("[VideoUpload] Poll result:", result);
+
+                if (result.status === "ready") {
+                  clearInterval(pollInterval);
+                  console.log("[VideoUpload] Video ready!", result);
+
+                  setUploads((prev) => {
+                    const newMap = new Map(prev);
+                    newMap.set(uploadId, {
+                      filename: file.name,
+                      progress: 100,
+                      status: "complete",
+                    });
+                    return newMap;
+                  });
+
+                  onUploadComplete?.(assetId);
+                } else if (result.status === "error") {
+                  clearInterval(pollInterval);
+                  console.error("[VideoUpload] Video processing failed");
+
+                  setUploads((prev) => {
+                    const newMap = new Map(prev);
+                    newMap.set(uploadId, {
+                      filename: file.name,
+                      progress: 100,
+                      status: "error",
+                      error: "Video processing failed",
+                    });
+                    return newMap;
+                  });
+                }
+                // else keep polling (status: "processing")
+              } catch (error) {
+                console.error("[VideoUpload] Polling error:", error);
+                // Don't clear interval, keep trying
+              }
+            }, 3000); // Poll every 3 seconds
+
+            // Safety timeout: stop polling after 5 minutes
             setTimeout(() => {
-              setUploads((prev) => {
-                const newMap = new Map(prev);
-                newMap.set(uploadId, {
-                  filename: file.name,
-                  progress: 100,
-                  status: "complete",
-                });
-                return newMap;
-              });
-              onUploadComplete?.(assetId);
-            }, 2000);
+              clearInterval(pollInterval);
+              console.warn("[VideoUpload] Polling timeout after 5 minutes");
+            }, 5 * 60 * 1000);
           },
           onAfterResponse: (req, res) => {
             // Capture stream-media-id from response headers (Cloudflare-specific)
@@ -152,7 +188,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
         });
       }
     }
-  }, [projectId, requestUploadUrl, updateStreamId, onUploadComplete]);
+  }, [projectId, requestUploadUrl, updateStreamId, checkVideoStatus, onUploadComplete]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

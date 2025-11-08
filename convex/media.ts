@@ -357,7 +357,7 @@ export const listAssets = query({
 });
 
 /**
- * Update asset with stream ID (called from frontend after TUS upload URL is created)
+ * Update asset with stream ID (called from frontend after TUS upload completes)
  */
 export const updateAssetStreamId = mutation({
   args: {
@@ -367,8 +367,110 @@ export const updateAssetStreamId = mutation({
   handler: async (ctx, { assetId, streamId }) => {
     await ctx.db.patch(assetId, {
       streamId,
+      status: "processing", // Mark as processing while Cloudflare transcodes
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Poll Cloudflare Stream API to check if video is ready
+ * Called by frontend every few seconds after upload completes
+ */
+export const checkVideoStatus = action({
+  args: {
+    assetId: v.id("assets"),
+  },
+  handler: async (ctx, { assetId }): Promise<{
+    status: "processing" | "ready" | "error";
+    playbackUrl?: string;
+    duration?: number;
+    thumbnailUrl?: string;
+  }> => {
+    // Get asset record
+    const asset = await ctx.runQuery(api.media.getAsset, { assetId });
+
+    if (!asset || !asset.streamId) {
+      throw new Error("Asset not found or missing streamId");
+    }
+
+    // Check video status from Cloudflare Stream API
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/${asset.streamId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[media:checkVideoStatus] Cloudflare API error:", {
+        status: response.status,
+        assetId,
+        streamId: asset.streamId,
+      });
+      return { status: "processing" }; // Keep checking
+    }
+
+    const data = await response.json();
+
+    if (!data.success || !data.result) {
+      return { status: "processing" };
+    }
+
+    const video = data.result;
+
+    // Check if video is ready to stream
+    if (video.status?.state === "ready" && video.playback?.hls) {
+      // Generate HLS playback URL
+      const playbackUrl = video.playback.hls;
+      const thumbnailUrl = video.thumbnail || `https://customer-${CLOUDFLARE_ACCOUNT_ID}.cloudflarestream.com/${asset.streamId}/thumbnails/thumbnail.jpg`;
+
+      // Update asset in database
+      await ctx.runMutation(internal.media.updateAssetByStreamId, {
+        streamId: asset.streamId,
+        status: "ready",
+        playbackUrl,
+        duration: video.duration || 0,
+        thumbnailUrl,
+      });
+
+      console.log("[media:checkVideoStatus] Video ready:", {
+        assetId,
+        streamId: asset.streamId,
+        playbackUrl,
+      });
+
+      return {
+        status: "ready",
+        playbackUrl,
+        duration: video.duration,
+        thumbnailUrl,
+      };
+    }
+
+    // Check for errors
+    if (video.status?.state === "error") {
+      await ctx.runMutation(internal.media.updateAssetByStreamId, {
+        streamId: asset.streamId,
+        status: "error",
+        errorMessage: video.status.errorReasonText || "Video processing failed",
+      });
+
+      return {
+        status: "error",
+      };
+    }
+
+    // Still processing
+    console.log("[media:checkVideoStatus] Video still processing:", {
+      assetId,
+      streamId: asset.streamId,
+      state: video.status?.state,
+    });
+
+    return { status: "processing" };
   },
 });
 
