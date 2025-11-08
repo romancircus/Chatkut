@@ -61,102 +61,103 @@ export const MODEL_ROUTING: Record<
 };
 
 /**
- * Initialize Dedalus client with API routing
+ * Initialize Dedalus client using dedalus-labs SDK
  *
- * Uses Dedalus API (https://api.dedalus.ai) to route to different AI providers
+ * For now, fallback to direct Anthropic SDK since dedalus-labs may not be fully set up
  */
 function createDedalusClient(apiKey: string): DedalusClient {
-  const DEDALUS_API_URL = "https://api.dedalus.ai/v1";
+  // Use Anthropic SDK directly for now
+  // The DEDALUS_API_KEY is actually for their service, but we'll use Anthropic directly
+  const Anthropic = require("@anthropic-ai/sdk");
+
+  // If apiKey starts with "sk-ant-", it's an Anthropic key
+  // If it starts with "dsk_", it's a Dedalus key (TODO: implement Dedalus SDK)
+  const isAnthropicKey = apiKey.startsWith("sk-ant-");
+
+  if (!isAnthropicKey) {
+    console.warn("[dedalus:client] Non-Anthropic API key detected. Using mock responses for now.");
+    console.warn("[dedalus:client] Please set ANTHROPIC_API_KEY for full functionality.");
+
+    // Return mock client that generates simple responses
+    return {
+      generateText: async (params: any) => {
+        const { prompt } = params;
+        return {
+          text: `I understand you want to: ${prompt}\n\nHowever, I need a valid Anthropic API key to process this request. Please set ANTHROPIC_API_KEY in your Convex environment.`,
+          model: "mock",
+          provider: "mock",
+          usage: { input: 0, output: 0, total: 0 },
+        };
+      },
+      generateJSON: async (params: any) => {
+        return {
+          data: { error: "Mock mode - API key needed" },
+          model: "mock",
+          provider: "mock",
+        };
+      },
+    };
+  }
+
+  const anthropic = new Anthropic.Anthropic({ apiKey });
 
   return {
     generateText: async (params: any) => {
-      const { provider, model, systemPrompt, prompt, temperature, maxTokens } = params;
+      const { model, systemPrompt, prompt, temperature, maxTokens } = params;
 
-      console.log(`[dedalus:client] Calling ${provider}/${model} via Dedalus API...`);
+      console.log(`[dedalus:client] Calling Anthropic ${model}...`);
 
-      const response = await fetch(`${DEDALUS_API_URL}/generate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          provider,
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: prompt },
-          ],
-          temperature,
-          max_tokens: maxTokens || 1000,
-        }),
+      const message = await anthropic.messages.create({
+        model: model || "claude-sonnet-4-20250514",
+        max_tokens: maxTokens || 1000,
+        temperature: temperature || 0.7,
+        system: systemPrompt,
+        messages: [{ role: "user", content: prompt }],
       });
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Dedalus API error (${response.status}): ${error}`);
-      }
-
-      const data = await response.json();
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
 
       return {
-        text: data.content || data.text || "",
-        model: data.model || model,
-        provider: data.provider || provider,
-        usage: data.usage || {
-          input: 0,
-          output: 0,
-          total: 0,
+        text,
+        model: message.model,
+        provider: "anthropic",
+        usage: {
+          input: message.usage.input_tokens,
+          output: message.usage.output_tokens,
+          total: message.usage.input_tokens + message.usage.output_tokens,
         },
       };
     },
 
     generateJSON: async (params: any) => {
-      const { provider, model, systemPrompt, prompt, temperature } = params;
+      const { model, systemPrompt, prompt, temperature } = params;
 
-      console.log(`[dedalus:client] Calling ${provider}/${model} (JSON mode) via Dedalus API...`);
+      console.log(`[dedalus:client] Calling Anthropic ${model} (JSON mode)...`);
 
-      const response = await fetch(`${DEDALUS_API_URL}/generate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          provider,
-          model,
-          messages: [
-            { role: "system", content: systemPrompt + "\n\nRespond with valid JSON only." },
-            { role: "user", content: prompt },
-          ],
-          temperature,
-          max_tokens: 2000,
-          response_format: { type: "json_object" },
-        }),
+      const message = await anthropic.messages.create({
+        model: model || "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        temperature: temperature || 0.7,
+        system: systemPrompt + "\n\nRespond with valid JSON only.",
+        messages: [{ role: "user", content: prompt }],
       });
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Dedalus API error (${response.status}): ${error}`);
-      }
-
-      const data = await response.json();
-      const text = data.content || data.text || "";
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
 
       // Try to parse JSON from response
       try {
         const json = JSON.parse(text);
         return {
           data: json,
-          model: data.model || model,
-          provider: data.provider || provider,
+          model: message.model,
+          provider: "anthropic",
         };
       } catch {
         // If not valid JSON, return as-is
         return {
           data: { text },
-          model: data.model || model,
-          provider: data.provider || provider,
+          model: message.model,
+          provider: "anthropic",
         };
       }
     },
