@@ -41,13 +41,13 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
       try {
         // Request TUS endpoint from Convex
         console.log("[VideoUpload] Requesting TUS endpoint for:", file.name);
-        const { tusEndpoint, assetId } = await requestUploadUrl({
+        const { uploadUrl, assetId } = await requestUploadUrl({
           projectId,
           filename: file.name,
           fileSize: file.size,
         });
 
-        console.log("[VideoUpload] Got TUS endpoint:", tusEndpoint);
+        console.log("[VideoUpload] Got TUS upload URL:", uploadUrl);
 
         // Get Cloudflare API token from environment
         const CLOUDFLARE_STREAM_TOKEN = process.env.NEXT_PUBLIC_CLOUDFLARE_STREAM_TOKEN;
@@ -58,7 +58,7 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
 
         // Start TUS upload with correct configuration based on Cloudflare docs
         const upload = new tus.Upload(file, {
-          endpoint: tusEndpoint, // Use endpoint, not uploadUrl
+          endpoint: uploadUrl, // Use the uploadUrl from Cloudflare
           headers: {
             Authorization: `Bearer ${CLOUDFLARE_STREAM_TOKEN}`, // Required for Cloudflare
           },
