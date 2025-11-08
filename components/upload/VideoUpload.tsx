@@ -54,18 +54,19 @@ export function VideoUpload({ projectId, onUploadComplete }: VideoUploadProps) {
         }
 
         // Start TUS upload with Cloudflare Stream configuration
-        // Note: Cloudflare returns a complete uploadURL, so we use that directly
-        // We don't need to set endpoint - the uploadURL IS the complete TUS endpoint
+        // Cloudflare's Direct Creator Upload gives us a one-time uploadURL
+        // We DON'T use uploadUrl parameter - that's for resuming existing uploads
+        // Instead, we use endpoint and let TUS create a new upload
         const upload = new tus.Upload(file, {
-          uploadUrl: uploadUrl, // Use uploadUrl for complete URL (Cloudflare-specific)
-          // No Authorization header needed - the uploadURL is already signed/authorized
+          endpoint: uploadUrl, // The uploadURL from Cloudflare IS the endpoint
+          resume: false, // Don't try to resume - this is a fresh upload each time
+          removeFingerprintOnSuccess: true, // Clear fingerprint after success
           chunkSize: 50 * 1024 * 1024, // 50 MB chunks (Cloudflare requires min 5 MB)
           retryDelays: [0, 3000, 5000, 10000, 20000], // Retry delays from Cloudflare docs
           metadata: {
             name: file.name, // Use 'name' not 'filename'
             filetype: file.type,
           },
-          uploadSize: file.size, // Explicitly set upload size
           onError: (error) => {
             console.error("[VideoUpload] Upload failed:", error);
             setUploads((prev) => {
