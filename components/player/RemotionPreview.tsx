@@ -127,8 +127,9 @@ function generateRemotionComponent(ir: any) {
  * Render individual elements based on type
  */
 function ElementRenderer({ element }: { element: any }) {
-  const { useCurrentFrame, interpolate, OffthreadVideo, Audio, Img, AbsoluteFill } =
+  const { useCurrentFrame, interpolate, Audio, Img, AbsoluteFill } =
     require("remotion");
+  const { HlsVideo } = require("@/components/player/HlsVideo");
 
   const frame = useCurrentFrame();
   const { properties, animations, type } = element;
@@ -207,8 +208,10 @@ function ElementRenderer({ element }: { element: any }) {
   // Render based on element type
   switch (type) {
     case "video":
+      // Use HlsVideo for preview (supports .m3u8 HLS streams)
+      // For rendering, DynamicComposition.tsx will use OffthreadVideo with MP4 URLs
       return (
-        <OffthreadVideo
+        <HlsVideo
           src={properties.src}
           style={baseStyle}
           volume={properties.volume ?? 1}
