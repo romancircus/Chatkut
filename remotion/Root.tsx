@@ -20,7 +20,7 @@ export const RemotionRoot: React.FC = () => {
   return (
     <>
       {/* Dynamic composition that renders from IR */}
-      <Composition
+      <Composition<DynamicCompositionProps>
         id="DynamicComposition"
         component={DynamicComposition}
         durationInFrames={DEFAULT_DURATION}

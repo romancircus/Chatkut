@@ -412,3 +412,252 @@ function executeMove(
 function generateElementId(): string {
   return `el_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
+
+/**
+ * Add element to composition (for manual editing)
+ */
+export const addElement = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    assetId: v.id("assets"),
+    from: v.optional(v.number()),
+    durationInFrames: v.optional(v.number()),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, { compositionId, assetId, from, durationInFrames, label }) => {
+    const composition = await ctx.db.get(compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    const asset = await ctx.db.get(assetId);
+    if (!asset) {
+      throw new Error("Asset not found");
+    }
+
+    // Validate asset is ready
+    if (asset.status !== "ready") {
+      throw new Error(`Asset is not ready (status: ${asset.status}). Please wait for processing to complete.`);
+    }
+
+    // Validate asset has playback URL
+    if (!asset.playbackUrl) {
+      throw new Error("Asset does not have a playback URL");
+    }
+
+    // Validate frame ranges
+    const startFrame = from ?? 0;
+    if (startFrame < 0) {
+      throw new Error("Start frame must be non-negative");
+    }
+
+    // Calculate duration if not provided
+    const elementDuration = durationInFrames || (asset.duration ? Math.floor(asset.duration * composition.ir.metadata.fps) : 90);
+
+    if (elementDuration <= 0) {
+      throw new Error("Duration must be positive");
+    }
+
+    const endFrame = startFrame + elementDuration;
+    if (endFrame > composition.ir.metadata.durationInFrames) {
+      console.warn(`[addElement] Element extends beyond composition (${endFrame} > ${composition.ir.metadata.durationInFrames})`);
+    }
+
+    // Create new element
+    const newElement = {
+      id: generateElementId(),
+      type: asset.type,
+      from: startFrame,
+      durationInFrames: elementDuration,
+      properties: {
+        src: asset.playbackUrl,
+        volume: 1,
+      },
+      label: label || asset.filename,
+    };
+
+    const updatedIR = {
+      ...composition.ir,
+      elements: [...composition.ir.elements, newElement],
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`[addElement] Added element ${newElement.id} (type: ${asset.type}, from: ${startFrame}, duration: ${elementDuration})`);
+    return newElement.id;
+  },
+});
+
+/**
+ * Update element in composition
+ */
+export const updateElement = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    elementId: v.string(),
+    changes: v.any(),
+  },
+  handler: async (ctx, { compositionId, elementId, changes }) => {
+    const composition = await ctx.db.get(compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    // Find the element
+    const element = composition.ir.elements.find((el: any) => el.id === elementId);
+    if (!element) {
+      throw new Error(`Element ${elementId} not found in composition`);
+    }
+
+    // Validate frame ranges if updating timing
+    if (changes.from !== undefined) {
+      if (changes.from < 0) {
+        throw new Error("Start frame must be non-negative");
+      }
+    }
+
+    if (changes.durationInFrames !== undefined) {
+      if (changes.durationInFrames <= 0) {
+        throw new Error("Duration must be positive");
+      }
+    }
+
+    // Validate volume if present
+    if (changes.properties?.volume !== undefined) {
+      const volume = changes.properties.volume;
+      if (volume < 0 || volume > 1) {
+        throw new Error("Volume must be between 0 and 1");
+      }
+    }
+
+    // Validate playback rate if present
+    if (changes.properties?.playbackRate !== undefined) {
+      const rate = changes.properties.playbackRate;
+      if (rate <= 0 || rate > 10) {
+        throw new Error("Playback rate must be between 0 and 10");
+      }
+    }
+
+    // Validate opacity if present
+    if (changes.properties?.opacity !== undefined) {
+      const opacity = changes.properties.opacity;
+      if (opacity < 0 || opacity > 1) {
+        throw new Error("Opacity must be between 0 and 1");
+      }
+    }
+
+    const updatedIR = {
+      ...composition.ir,
+      elements: composition.ir.elements.map((el: any) => {
+        if (el.id !== elementId) return el;
+        return {
+          ...el,
+          ...changes,
+          properties: {
+            ...el.properties,
+            ...(changes.properties || {}),
+          },
+        };
+      }),
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`[updateElement] Updated element ${elementId}`, changes);
+  },
+});
+
+/**
+ * Delete element from composition
+ */
+export const deleteElement = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    elementId: v.string(),
+  },
+  handler: async (ctx, { compositionId, elementId }) => {
+    const composition = await ctx.db.get(compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    // Verify element exists
+    const element = composition.ir.elements.find((el: any) => el.id === elementId);
+    if (!element) {
+      throw new Error(`Element ${elementId} not found in composition`);
+    }
+
+    const updatedIR = {
+      ...composition.ir,
+      elements: composition.ir.elements.filter((el: any) => el.id !== elementId),
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`[deleteElement] Deleted element ${elementId} (type: ${element.type}, label: ${element.label})`);
+  },
+});
+
+/**
+ * Reorder elements in composition
+ */
+export const reorderElements = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    elementIds: v.array(v.string()),
+  },
+  handler: async (ctx, { compositionId, elementIds }) => {
+    const composition = await ctx.db.get(compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    // Validate that all provided IDs exist
+    const existingIds = new Set(composition.ir.elements.map((el: any) => el.id));
+    const missingIds = elementIds.filter((id) => !existingIds.has(id));
+
+    if (missingIds.length > 0) {
+      throw new Error(`Elements not found: ${missingIds.join(", ")}`);
+    }
+
+    // Validate that all existing elements are included
+    if (elementIds.length !== composition.ir.elements.length) {
+      throw new Error(`Reorder must include all ${composition.ir.elements.length} elements, got ${elementIds.length}`);
+    }
+
+    // Create map of elements by ID
+    const elementMap = new Map(composition.ir.elements.map((el: any) => [el.id, el]));
+
+    // Reorder based on provided IDs
+    const reorderedElements = elementIds.map((id) => elementMap.get(id)).filter(Boolean);
+
+    const updatedIR = {
+      ...composition.ir,
+      elements: reorderedElements,
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`[reorderElements] Reordered ${elementIds.length} elements`);
+  },
+});

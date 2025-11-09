@@ -1,14 +1,16 @@
 /**
  * Dedalus AI Client Wrapper
  *
- * Provides unified interface for multi-model AI access through Dedalus SDK.
- * Routes different tasks to optimal models for cost/quality balance.
+ * TEMPORARY: Using Anthropic SDK directly until Dedalus TypeScript SDK is production-ready.
+ * The dedalus-labs npm package exists but TypeScript support is marked as "Coming Very Soon"
+ * in official docs, and we're getting 404 errors from the API.
+ *
+ * Will migrate to Dedalus SDK once TypeScript support is stable.
  *
  * @see PRIORITIZED_IMPLEMENTATION_PLAN.md Task 1.3
  */
 
-import { Dedalus } from "dedalus-labs";
-import type { Completion } from "dedalus-labs/resources/chat";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Model routing strategy
 export type ModelTask =
@@ -29,31 +31,31 @@ export const MODEL_ROUTING: Record<
   }
 > = {
   "code-generation": {
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.3, // Low for determinism
     reasoning: "Best code quality, understands Remotion/React patterns",
     agent_attributes: { accuracy: 0.9, intelligence: 0.9 },
   },
   "plan-generation": {
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.3, // Low for determinism
     reasoning: "Excellent structured output, precise edit plans",
     agent_attributes: { accuracy: 0.95, intelligence: 0.9 },
   },
   "code-analysis": {
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-sonnet-4-5-20250929",
     temperature: 0.5,
     reasoning: "Deep understanding of code structure",
     agent_attributes: { intelligence: 0.9, accuracy: 0.85 },
   },
   "chat-response": {
-    model: ["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet-20241022"],
+    model: "claude-sonnet-4-5-20250929", // Latest Claude Sonnet model
     temperature: 0.7,
     reasoning: "Multi-model routing for balanced cost/quality",
     agent_attributes: { friendliness: 0.9, efficiency: 0.8 },
   },
   "simple-edit": {
-    model: "gpt-4o-mini",
+    model: "claude-sonnet-4-5-20250929", // Latest Claude Sonnet model
     temperature: 0.5,
     reasoning: "Fast and cheap for simple property updates",
     agent_attributes: { efficiency: 0.9, speed: 0.9 },
@@ -63,32 +65,32 @@ export const MODEL_ROUTING: Record<
 /**
  * AI Client singleton
  */
-let dedalusClientInstance: Dedalus | null = null;
+let anthropicClientInstance: Anthropic | null = null;
 
-export function getAIClient(apiKey?: string): Dedalus {
+export function getAIClient(apiKey?: string): Anthropic {
   // Use provided API key or environment variable
-  const key = apiKey || process.env.DEDALUS_API_KEY;
+  const key = apiKey || process.env.ANTHROPIC_API_KEY;
 
   if (!key) {
     throw new Error(
-      "DEDALUS_API_KEY not configured. Run: npx convex env set DEDALUS_API_KEY \"your-key\""
+      "ANTHROPIC_API_KEY not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\""
     );
   }
 
-  if (!dedalusClientInstance) {
-    console.log("[dedalus:client] Initializing Dedalus SDK...");
-    dedalusClientInstance = new Dedalus({
+  if (!anthropicClientInstance) {
+    console.log("[anthropic:client] Initializing Anthropic SDK...");
+    anthropicClientInstance = new Anthropic({
       apiKey: key,
     });
-    console.log("[dedalus:client] Dedalus SDK initialized ✅");
+    console.log("[anthropic:client] Anthropic SDK initialized ✅");
   }
 
-  return dedalusClientInstance;
+  return anthropicClientInstance;
 }
 
 /**
  * Generate chat response
- * Uses multi-model routing for balanced cost/quality
+ * Uses Anthropic Claude directly
  */
 export async function generateChatResponse(
   apiKey: string,
@@ -105,7 +107,7 @@ export async function generateChatResponse(
   cost?: number;
   tokens?: { input: number; output: number; total: number };
 }> {
-  console.log("[dedalus:chat] Generating response for:", message.slice(0, 50) + "...");
+  console.log("[anthropic:chat] Generating response for:", message.slice(0, 50) + "...");
 
   const routing = MODEL_ROUTING["chat-response"];
   const systemPrompt = buildChatSystemPrompt(context);
@@ -113,37 +115,36 @@ export async function generateChatResponse(
   try {
     const client = getAIClient(apiKey);
 
-    // Call Dedalus SDK with multi-model routing
-    const response = await client.chat.create({
-      model: routing.model,
-      input: [
-        { role: "system", content: systemPrompt },
+    // Call Anthropic SDK
+    const response = await client.messages.create({
+      model: routing.model as string,
+      system: systemPrompt,
+      messages: [
         { role: "user", content: message },
       ],
       temperature: routing.temperature,
       max_tokens: 1000,
-      agent_attributes: routing.agent_attributes,
     });
 
-    console.log("[dedalus:chat] Response generated:", {
+    console.log("[anthropic:chat] Response generated:", {
       model: response.model,
-      tokens: response.usage?.total_tokens || 0,
+      tokens: response.usage.input_tokens + response.usage.output_tokens,
     });
+
+    const text = response.content[0]?.type === "text" ? response.content[0].text : "";
 
     return {
-      text: response.choices[0]?.message?.content || "",
+      text,
       model: response.model,
-      provider: "dedalus", // Dedalus routes to appropriate provider
-      tokens: response.usage
-        ? {
-            input: response.usage.prompt_tokens,
-            output: response.usage.completion_tokens,
-            total: response.usage.total_tokens,
-          }
-        : undefined,
+      provider: "anthropic",
+      tokens: {
+        input: response.usage.input_tokens,
+        output: response.usage.output_tokens,
+        total: response.usage.input_tokens + response.usage.output_tokens,
+      },
     };
   } catch (error) {
-    console.error("[dedalus:chat] Error generating response:", error);
+    console.error("[anthropic:chat] Error generating response:", error);
     throw new Error(`Failed to generate chat response: ${error}`);
   }
 }
@@ -157,7 +158,7 @@ export async function generateEditPlan(
   userMessage: string,
   compositionIR: any
 ): Promise<any> {
-  console.log("[dedalus:plan] Generating edit plan for:", userMessage.slice(0, 50) + "...");
+  console.log("[anthropic:plan] Generating edit plan for:", userMessage.slice(0, 50) + "...");
 
   const routing = MODEL_ROUTING["plan-generation"];
   const systemPrompt = buildEditPlanSystemPrompt(compositionIR);
@@ -165,21 +166,20 @@ export async function generateEditPlan(
   try {
     const client = getAIClient(apiKey);
 
-    // Call Dedalus SDK
-    const response = await client.chat.create({
-      model: routing.model,
-      input: [
-        { role: "system", content: systemPrompt },
+    // Call Anthropic SDK
+    const response = await client.messages.create({
+      model: routing.model as string,
+      system: systemPrompt,
+      messages: [
         { role: "user", content: userMessage },
       ],
       temperature: routing.temperature,
       max_tokens: 2000,
-      agent_attributes: routing.agent_attributes,
     });
 
-    const text = response.choices[0]?.message?.content || "";
+    const text = response.content[0]?.type === "text" ? response.content[0].text : "";
 
-    console.log("[dedalus:plan] Plan generated");
+    console.log("[anthropic:plan] Plan generated");
 
     // Try to parse JSON from response
     try {
@@ -190,7 +190,7 @@ export async function generateEditPlan(
       return { text };
     }
   } catch (error) {
-    console.error("[dedalus:plan] Error generating plan:", error);
+    console.error("[anthropic:plan] Error generating plan:", error);
     throw new Error(`Failed to generate edit plan: ${error}`);
   }
 }
@@ -208,7 +208,7 @@ export async function generateRemotionCode(
   provider: string;
   cost?: number;
 }> {
-  console.log("[dedalus:code] Generating Remotion code for composition:", compositionIR.id);
+  console.log("[anthropic:code] Generating Remotion code for composition:", compositionIR.id);
 
   const routing = MODEL_ROUTING["code-generation"];
   const systemPrompt = buildCodeGenerationSystemPrompt();
@@ -217,26 +217,27 @@ export async function generateRemotionCode(
   try {
     const client = getAIClient(apiKey);
 
-    const response = await client.chat.create({
-      model: routing.model,
-      input: [
-        { role: "system", content: systemPrompt },
+    const response = await client.messages.create({
+      model: routing.model as string,
+      system: systemPrompt,
+      messages: [
         { role: "user", content: prompt },
       ],
       temperature: routing.temperature,
       max_tokens: 4096,
-      agent_attributes: routing.agent_attributes,
     });
 
-    console.log("[dedalus:code] Code generated successfully");
+    const code = response.content[0]?.type === "text" ? response.content[0].text : "";
+
+    console.log("[anthropic:code] Code generated successfully");
 
     return {
-      code: response.choices[0]?.message?.content || "",
+      code,
       model: response.model,
-      provider: "dedalus",
+      provider: "anthropic",
     };
   } catch (error) {
-    console.error("[dedalus:code] Error generating code:", error);
+    console.error("[anthropic:code] Error generating code:", error);
     throw new Error(`Failed to generate Remotion code: ${error}`);
   }
 }

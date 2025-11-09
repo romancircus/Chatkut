@@ -11,7 +11,7 @@ import {
   Sequence,
   useCurrentFrame,
   interpolate,
-  Video,
+  OffthreadVideo,
   Audio,
   Img,
 } from "remotion";
@@ -89,13 +89,16 @@ function renderElementContent(element: CompositionElement): React.ReactNode {
   switch (element.type) {
     case "video":
       return (
-        <Video
+        <OffthreadVideo
           src={element.properties.src}
           style={{
             width: element.properties.width || "100%",
             height: element.properties.height || "auto",
           }}
           volume={element.properties.volume ?? 1}
+          playbackRate={element.properties.playbackRate ?? 1}
+          startFrom={element.properties.startFrom ?? 0}
+          endAt={element.properties.endAt}
         />
       );
 
@@ -104,6 +107,9 @@ function renderElementContent(element: CompositionElement): React.ReactNode {
         <Audio
           src={element.properties.src}
           volume={element.properties.volume ?? 1}
+          playbackRate={element.properties.playbackRate ?? 1}
+          startFrom={element.properties.startFrom ?? 0}
+          endAt={element.properties.endAt}
         />
       );
 
@@ -167,7 +173,9 @@ function calculateAnimatedStyle(
   };
 
   // Apply animations
-  if (element.animations) {
+  if (element.animations && element.animations.length > 0) {
+    const transforms: string[] = [];
+
     for (const animation of element.animations) {
       const value = interpolateAnimation(animation.keyframes, frame, animation.easing);
 
@@ -176,7 +184,13 @@ function calculateAnimatedStyle(
           style.opacity = value;
           break;
         case "scale":
-          style.transform = `scale(${value})`;
+          transforms.push(`scale(${value})`);
+          break;
+        case "scaleX":
+          transforms.push(`scaleX(${value})`);
+          break;
+        case "scaleY":
+          transforms.push(`scaleY(${value})`);
           break;
         case "x":
           style.left = value;
@@ -185,9 +199,32 @@ function calculateAnimatedStyle(
           style.top = value;
           break;
         case "rotation":
-          style.transform = `${style.transform || ""} rotate(${value}deg)`;
+          transforms.push(`rotate(${value}deg)`);
+          break;
+        case "rotateX":
+          transforms.push(`rotateX(${value}deg)`);
+          break;
+        case "rotateY":
+          transforms.push(`rotateY(${value}deg)`);
+          break;
+        case "translateX":
+          transforms.push(`translateX(${value}px)`);
+          break;
+        case "translateY":
+          transforms.push(`translateY(${value}px)`);
+          break;
+        case "skewX":
+          transforms.push(`skewX(${value}deg)`);
+          break;
+        case "skewY":
+          transforms.push(`skewY(${value}deg)`);
           break;
       }
+    }
+
+    // Combine all transform animations
+    if (transforms.length > 0) {
+      style.transform = transforms.join(" ");
     }
   }
 

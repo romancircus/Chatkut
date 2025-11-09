@@ -1,24 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { FileVideoIcon, ImageIcon, MusicIcon, TrashIcon, LoaderIcon, CheckCircleIcon } from "lucide-react";
+import { FileVideoIcon, ImageIcon, MusicIcon, TrashIcon, LoaderIcon, CheckCircleIcon, PlusCircleIcon } from "lucide-react";
 import { cn, formatFileSize, formatDuration } from "@/lib/utils";
 import { HLSPlayer } from "../player/HLSPlayer";
 
 interface AssetLibraryProps {
   projectId: Id<"projects">;
+  compositionId?: Id<"compositions">;
   onAssetSelect?: (assetId: Id<"assets">) => void;
 }
 
-export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
+export function AssetLibrary({ projectId, compositionId, onAssetSelect }: AssetLibraryProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<Id<"assets"> | null>(null);
   const [filterType, setFilterType] = useState<"all" | "video" | "audio" | "image">("all");
 
   const assets = useQuery(api.media.listAssets, { projectId });
   const deleteAsset = useAction(api.media.deleteAsset);
+  const addElement = useMutation(api.compositions.addElement);
 
   const filteredAssets = assets?.filter((asset: any) =>
     filterType === "all" ? true : asset.type === filterType
@@ -28,6 +30,21 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
     e.stopPropagation();
     if (confirm("Are you sure you want to delete this asset?")) {
       await deleteAsset({ assetId });
+    }
+  };
+
+  const handleQuickAdd = async (assetId: Id<"assets">, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!compositionId) {
+      console.warn("[AssetLibrary] No composition ID provided for quick add");
+      return;
+    }
+
+    try {
+      await addElement({ compositionId, assetId });
+      console.log("[AssetLibrary] Added asset to composition:", assetId);
+    } catch (error) {
+      console.error("[AssetLibrary] Error adding asset:", error);
     }
   };
 
@@ -79,11 +96,13 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
                 key={asset._id}
                 asset={asset}
                 isSelected={selectedAssetId === asset._id}
+                showQuickAdd={!!compositionId && asset.status === "ready"}
                 onSelect={() => {
                   setSelectedAssetId(asset._id);
                   onAssetSelect?.(asset._id);
                 }}
                 onDelete={(e) => handleDelete(asset._id, e)}
+                onQuickAdd={(e) => handleQuickAdd(asset._id, e)}
               />
             ))}
           </div>
@@ -123,11 +142,13 @@ export function AssetLibrary({ projectId, onAssetSelect }: AssetLibraryProps) {
 interface AssetCardProps {
   asset: any;
   isSelected: boolean;
+  showQuickAdd?: boolean;
   onSelect: () => void;
   onDelete: (e: React.MouseEvent) => void;
+  onQuickAdd?: (e: React.MouseEvent) => void;
 }
 
-function AssetCard({ asset, isSelected, onSelect, onDelete }: AssetCardProps) {
+function AssetCard({ asset, isSelected, showQuickAdd, onSelect, onDelete, onQuickAdd }: AssetCardProps) {
   const getIcon = () => {
     switch (asset.type) {
       case "video":
@@ -144,15 +165,40 @@ function AssetCard({ asset, isSelected, onSelect, onDelete }: AssetCardProps) {
   return (
     <div
       onClick={onSelect}
+      draggable={showQuickAdd}
+      onDragStart={(e) => {
+        if (showQuickAdd) {
+          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData("application/json", JSON.stringify({
+            assetId: asset._id,
+            assetType: asset.type,
+            filename: asset.filename,
+          }));
+          console.log("[AssetCard] Drag started:", asset._id);
+        }
+      }}
       className={cn(
         "card cursor-pointer transition-all hover:scale-105 relative group",
-        isSelected && "ring-2 ring-primary-500"
+        isSelected && "ring-2 ring-primary-500",
+        showQuickAdd && "cursor-grab active:cursor-grabbing"
       )}
     >
+      {/* Quick Add Button */}
+      {showQuickAdd && onQuickAdd && (
+        <button
+          onClick={onQuickAdd}
+          className="absolute top-2 left-2 p-1 bg-primary-500/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-600"
+          title="Add to composition"
+        >
+          <PlusCircleIcon className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Delete Button */}
       <button
         onClick={onDelete}
         className="absolute top-2 right-2 p-1 bg-neutral-950/80 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error-DEFAULT"
+        title="Delete asset"
       >
         <TrashIcon className="w-4 h-4" />
       </button>

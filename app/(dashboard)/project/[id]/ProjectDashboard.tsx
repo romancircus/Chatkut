@@ -9,7 +9,9 @@ import { AssetLibrary } from "@/components/library/AssetLibrary";
 import { RemotionPreview } from "@/components/player/RemotionPreview";
 import { UndoRedo } from "@/components/editor/UndoRedo";
 import { RenderPanel } from "@/components/rendering/RenderPanel";
-import { PanelLeftIcon, UploadIcon, FolderIcon, PanelRightIcon } from "lucide-react";
+import { Timeline } from "@/components/timeline/Timeline";
+import { ElementInspector } from "@/components/editor/ElementInspector";
+import { PanelLeftIcon, UploadIcon, FolderIcon, PanelRightIcon, PanelBottomIcon, SettingsIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -38,8 +40,11 @@ export function ProjectDashboard({
   preloadedAssets,
 }: ProjectDashboardProps) {
   const [leftPanel, setLeftPanel] = useState<"upload" | "library">("library");
+  const [rightPanel, setRightPanel] = useState<"chat" | "render" | "inspector">("chat");
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(true);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
 
   // Use preloaded data with real-time subscriptions
   const project = usePreloadedQuery(preloadedProject);
@@ -99,7 +104,12 @@ export function ProjectDashboard({
 
             {/* Panel Content */}
             <div className="flex-1 overflow-hidden">
-              {leftPanel === "library" && <AssetLibrary projectId={projectId} />}
+              {leftPanel === "library" && (
+                <AssetLibrary
+                  projectId={projectId}
+                  compositionId={compositionId}
+                />
+              )}
               {leftPanel === "upload" && (
                 <div className="p-4">
                   <VideoUpload
@@ -139,37 +149,119 @@ export function ProjectDashboard({
           </button>
         </div>
 
-        {/* Split View: Preview + Chat + Render */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Preview Panel */}
-          <div className="flex-1 flex items-center justify-center p-6 bg-neutral-900">
-            {compositionId ? (
-              <RemotionPreview
-                compositionId={compositionId}
-                className="w-full max-w-4xl"
-              />
-            ) : (
-              <div className="text-center text-neutral-500">
-                <p className="text-lg font-medium">No Composition Yet</p>
-                <p className="text-sm mt-2">
-                  Start chatting to create your first composition
-                </p>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top Section: Preview + Right Panel */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Preview Panel */}
+            <div className="flex-1 flex items-center justify-center p-6 bg-neutral-900">
+              {compositionId ? (
+                <RemotionPreview
+                  compositionId={compositionId}
+                  className="w-full max-w-4xl"
+                />
+              ) : (
+                <div className="text-center text-neutral-500">
+                  <p className="text-lg font-medium">No Composition Yet</p>
+                  <p className="text-sm mt-2">
+                    Upload assets and add them to the timeline to get started
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Right Panel - Tabbed */}
+            {isRightPanelOpen && (
+              <div className="w-96 flex flex-col border-l border-neutral-800">
+                {/* Tabs */}
+                <div className="flex border-b border-neutral-800">
+                  <button
+                    onClick={() => setRightPanel("chat")}
+                    className={cn(
+                      "flex-1 px-4 py-3 text-sm font-medium transition-colors",
+                      rightPanel === "chat"
+                        ? "bg-neutral-900 text-white border-b-2 border-primary-500"
+                        : "text-neutral-400 hover:text-neutral-300"
+                    )}
+                  >
+                    Chat
+                  </button>
+                  <button
+                    onClick={() => setRightPanel("inspector")}
+                    className={cn(
+                      "flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center space-x-1",
+                      rightPanel === "inspector"
+                        ? "bg-neutral-900 text-white border-b-2 border-primary-500"
+                        : "text-neutral-400 hover:text-neutral-300"
+                    )}
+                  >
+                    <SettingsIcon className="w-4 h-4" />
+                    <span>Inspector</span>
+                  </button>
+                  {compositionId && (
+                    <button
+                      onClick={() => setRightPanel("render")}
+                      className={cn(
+                        "flex-1 px-4 py-3 text-sm font-medium transition-colors",
+                        rightPanel === "render"
+                          ? "bg-neutral-900 text-white border-b-2 border-primary-500"
+                          : "text-neutral-400 hover:text-neutral-300"
+                      )}
+                    >
+                      Render
+                    </button>
+                  )}
+                </div>
+
+                {/* Panel Content */}
+                <div className="flex-1 overflow-hidden">
+                  {rightPanel === "chat" && <ChatInterface projectId={projectId} />}
+                  {rightPanel === "inspector" && compositionId && (
+                    <ElementInspector
+                      compositionId={compositionId}
+                      elementId={selectedElementId}
+                    />
+                  )}
+                  {rightPanel === "render" && compositionId && (
+                    <RenderPanel
+                      compositionId={compositionId}
+                      projectId={projectId}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Chat Panel */}
-          <div className="w-96 flex flex-col border-l border-neutral-800">
-            <ChatInterface projectId={projectId} />
-          </div>
-
-          {/* Render Panel */}
-          {compositionId && isRightPanelOpen && (
-            <div className="w-80">
-              <RenderPanel
-                compositionId={compositionId}
-                projectId={projectId}
-              />
+          {/* Bottom Panel: Timeline */}
+          {compositionId && (
+            <div
+              className={cn(
+                "border-t border-neutral-800 transition-all duration-300",
+                isBottomPanelOpen ? "h-64" : "h-12"
+              )}
+            >
+              <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800">
+                <h3 className="text-sm font-semibold text-neutral-300">Timeline & Layers</h3>
+                <button
+                  onClick={() => setIsBottomPanelOpen(!isBottomPanelOpen)}
+                  className="btn-ghost p-1"
+                >
+                  <PanelBottomIcon className={cn("w-4 h-4 transition-transform", !isBottomPanelOpen && "rotate-180")} />
+                </button>
+              </div>
+              {isBottomPanelOpen && (
+                <div className="h-[calc(100%-40px)] p-4">
+                  <Timeline
+                    compositionId={compositionId}
+                    selectedElementId={selectedElementId}
+                    onElementSelect={(id) => {
+                      setSelectedElementId(id);
+                      setRightPanel("inspector");
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

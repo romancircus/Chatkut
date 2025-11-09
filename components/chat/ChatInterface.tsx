@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { SendIcon, LoaderIcon } from "lucide-react";
+import { SendIcon, LoaderIcon, TrashIcon, Trash2Icon } from "lucide-react";
 
 interface ChatInterfaceProps {
   projectId: Id<"projects">;
@@ -22,6 +22,10 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
 
   // Send message action
   const sendMessage = useAction(api.ai.sendChatMessage);
+
+  // Delete message mutations
+  const deleteMessage = useMutation(api.ai.deleteChatMessage);
+  const clearMessages = useMutation(api.ai.clearChatMessages);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -65,6 +69,19 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header with Clear All button */}
+      {messages && messages.length > 0 && (
+        <div className="border-b border-neutral-800 p-2 flex justify-end">
+          <button
+            onClick={() => clearMessages({ projectId })}
+            className="flex items-center space-x-1 px-3 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-neutral-800 rounded transition-colors"
+          >
+            <Trash2Icon className="w-3 h-3" />
+            <span>Clear All</span>
+          </button>
+        </div>
+      )}
+
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
         {messages?.length === 0 && (
@@ -81,11 +98,13 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
         {messages?.map((message: any) => (
           <ChatMessage
             key={message._id}
+            messageId={message._id}
             role={message.role}
             content={message.content}
             editPlan={message.editPlan}
             receipt={message.receipt}
             timestamp={message.timestamp}
+            onDelete={() => deleteMessage({ messageId: message._id })}
           />
         ))}
 
@@ -134,20 +153,25 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
 }
 
 interface ChatMessageProps {
+  messageId: Id<"chatMessages">;
   role: "user" | "assistant";
   content: string;
   editPlan?: any;
   receipt?: string;
   timestamp: number;
+  onDelete: () => void;
 }
 
 function ChatMessage({
+  messageId,
   role,
   content,
   editPlan,
   receipt,
   timestamp,
+  onDelete,
 }: ChatMessageProps) {
+  const [showDelete, setShowDelete] = useState(false);
   const formattedTime = new Date(timestamp).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -156,19 +180,22 @@ function ChatMessage({
   return (
     <div
       className={cn(
-        "flex flex-col space-y-2 animate-slide-up",
+        "flex flex-col space-y-2 animate-slide-up group",
         role === "user" ? "items-end" : "items-start"
       )}
+      onMouseEnter={() => setShowDelete(true)}
+      onMouseLeave={() => setShowDelete(false)}
     >
-      <div
-        className={cn(
-          "rounded-lg p-4 max-w-[80%]",
-          role === "user"
-            ? "bg-primary-500 text-white"
-            : "bg-neutral-800 text-neutral-100"
-        )}
-      >
-        <p className="whitespace-pre-wrap break-words">{content}</p>
+      <div className="relative">
+        <div
+          className={cn(
+            "rounded-lg p-4 max-w-[80%]",
+            role === "user"
+              ? "bg-primary-500 text-white"
+              : "bg-neutral-800 text-neutral-100"
+          )}
+        >
+          <p className="whitespace-pre-wrap break-words">{content}</p>
 
         {/* Edit Plan Preview */}
         {editPlan && role === "assistant" && (
@@ -197,7 +224,22 @@ function ChatMessage({
           </div>
         )}
 
-        <p className="text-xs mt-2 opacity-60">{formattedTime}</p>
+          <p className="text-xs mt-2 opacity-60">{formattedTime}</p>
+        </div>
+
+        {/* Delete button */}
+        {showDelete && (
+          <button
+            onClick={onDelete}
+            className={cn(
+              "absolute -top-2 p-1 rounded bg-neutral-900 border border-neutral-700 hover:bg-red-900 hover:border-red-600 transition-colors",
+              role === "user" ? "-right-2" : "-left-2"
+            )}
+            title="Delete message"
+          >
+            <TrashIcon className="w-3 h-3 text-neutral-400 hover:text-red-400" />
+          </button>
+        )}
       </div>
     </div>
   );
