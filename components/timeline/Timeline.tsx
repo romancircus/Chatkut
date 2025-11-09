@@ -28,9 +28,71 @@ export function Timeline({ compositionId, onElementSelect, selectedElementId }: 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const composition = useQuery(api.compositions.get, { compositionId });
-  const addElement = useMutation(api.compositions.addElement);
-  const deleteElement = useMutation(api.compositions.deleteElement);
-  const reorderElements = useMutation(api.compositions.reorderElements);
+  const addElement = useMutation(api.compositions.addElement).withOptimisticUpdate(
+    (localStore, args) => {
+      // Optimistically show new element in timeline immediately
+      const currentComposition = localStore.getQuery(api.compositions.get, {
+        compositionId: args.compositionId
+      });
+      if (!currentComposition?.ir) return;
+
+      // We don't have the new element data yet, so we can't add it optimistically
+      // Just show a loading state if needed
+    }
+  );
+
+  const deleteElement = useMutation(api.compositions.deleteElement).withOptimisticUpdate(
+    (localStore, args) => {
+      // Optimistically remove element from timeline immediately
+      const currentComposition = localStore.getQuery(api.compositions.get, {
+        compositionId: args.compositionId
+      });
+      if (!currentComposition?.ir) return;
+
+      localStore.setQuery(
+        api.compositions.get,
+        { compositionId: args.compositionId },
+        {
+          ...currentComposition,
+          ir: {
+            ...currentComposition.ir,
+            elements: currentComposition.ir.elements.filter(
+              (el: any) => el.id !== args.elementId
+            ),
+          },
+        }
+      );
+    }
+  );
+
+  const reorderElements = useMutation(api.compositions.reorderElements).withOptimisticUpdate(
+    (localStore, args) => {
+      // Optimistically reorder elements immediately
+      const currentComposition = localStore.getQuery(api.compositions.get, {
+        compositionId: args.compositionId
+      });
+      if (!currentComposition?.ir) return;
+
+      const elementMap = new Map(
+        currentComposition.ir.elements.map((el: any) => [el.id, el])
+      );
+      const reorderedElements = args.elementIds
+        .map((id) => elementMap.get(id))
+        .filter(Boolean);
+
+      localStore.setQuery(
+        api.compositions.get,
+        { compositionId: args.compositionId },
+        {
+          ...currentComposition,
+          ir: {
+            ...currentComposition.ir,
+            elements: reorderedElements,
+          },
+        }
+      );
+    }
+  );
 
   const elements: CompositionElement[] = composition?.ir?.elements || [];
   const fps = composition?.ir?.metadata?.fps || 30;

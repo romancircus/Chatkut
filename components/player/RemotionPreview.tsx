@@ -127,52 +127,71 @@ function generateRemotionComponent(ir: any) {
  * Render individual elements based on type
  */
 function ElementRenderer({ element }: { element: any }) {
-  const { useCurrentFrame, interpolate, Video, Audio, Img, AbsoluteFill } =
+  const { useCurrentFrame, interpolate, OffthreadVideo, Audio, Img, AbsoluteFill } =
     require("remotion");
 
   const frame = useCurrentFrame();
-  const { properties, animation, type } = element;
+  const { properties, animations, type } = element;
 
-  // Calculate animated values
+  // Calculate animated values - support multiple animations
   const animatedStyle: any = {};
+  const transforms: string[] = [];
 
-  if (animation) {
-    switch (animation.property) {
-      case "scale":
-        const scale = interpolateKeyframes(
-          frame,
-          animation.keyframes,
-          animation.easing
-        );
-        animatedStyle.transform = `scale(${scale})`;
-        break;
+  if (animations && Array.isArray(animations)) {
+    for (const animation of animations) {
+      const value = interpolateKeyframes(
+        frame,
+        animation.keyframes,
+        animation.easing
+      );
 
-      case "opacity":
-        const opacity = interpolateKeyframes(
-          frame,
-          animation.keyframes,
-          animation.easing
-        );
-        animatedStyle.opacity = opacity;
-        break;
+      switch (animation.property) {
+        case "opacity":
+          animatedStyle.opacity = value;
+          break;
+        case "scale":
+          transforms.push(`scale(${value})`);
+          break;
+        case "scaleX":
+          transforms.push(`scaleX(${value})`);
+          break;
+        case "scaleY":
+          transforms.push(`scaleY(${value})`);
+          break;
+        case "rotation":
+          transforms.push(`rotate(${value}deg)`);
+          break;
+        case "rotateX":
+          transforms.push(`rotateX(${value}deg)`);
+          break;
+        case "rotateY":
+          transforms.push(`rotateY(${value}deg)`);
+          break;
+        case "translateX":
+          transforms.push(`translateX(${value}px)`);
+          break;
+        case "translateY":
+          transforms.push(`translateY(${value}px)`);
+          break;
+        case "skewX":
+          transforms.push(`skewX(${value}deg)`);
+          break;
+        case "skewY":
+          transforms.push(`skewY(${value}deg)`);
+          break;
+        case "x":
+          // Legacy support for x/y properties
+          animatedStyle.left = value;
+          break;
+        case "y":
+          animatedStyle.top = value;
+          break;
+      }
+    }
 
-      case "x":
-        const x = interpolateKeyframes(
-          frame,
-          animation.keyframes,
-          animation.easing
-        );
-        animatedStyle.transform = `translateX(${x}px)`;
-        break;
-
-      case "y":
-        const y = interpolateKeyframes(
-          frame,
-          animation.keyframes,
-          animation.easing
-        );
-        animatedStyle.transform = `translateY(${y}px)`;
-        break;
+    // Combine all transforms
+    if (transforms.length > 0) {
+      animatedStyle.transform = transforms.join(" ");
     }
   }
 
@@ -189,9 +208,13 @@ function ElementRenderer({ element }: { element: any }) {
   switch (type) {
     case "video":
       return (
-        <Video
+        <OffthreadVideo
           src={properties.src}
           style={baseStyle}
+          volume={properties.volume ?? 1}
+          playbackRate={properties.playbackRate ?? 1}
+          startFrom={properties.startFrom ?? 0}
+          endAt={properties.endAt}
           data-element-id={element.id}
         />
       );
@@ -200,6 +223,10 @@ function ElementRenderer({ element }: { element: any }) {
       return (
         <Audio
           src={properties.src}
+          volume={properties.volume ?? 1}
+          playbackRate={properties.playbackRate ?? 1}
+          startFrom={properties.startFrom ?? 0}
+          endAt={properties.endAt}
           data-element-id={element.id}
         />
       );

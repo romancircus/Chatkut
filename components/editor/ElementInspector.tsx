@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -65,6 +65,13 @@ export function ElementInspector({ compositionId, elementId }: ElementInspectorP
 
   const debouncedUpdate = useCallback(
     (property: string, value: any, debounceMs: number = 300) => {
+      // Capture elementId at call time to avoid stale closure
+      const currentElementId = elementId;
+      if (!currentElementId) {
+        console.warn("[ElementInspector] No element selected, skipping update");
+        return;
+      }
+
       // Clear existing timer for this property
       if (debounceTimers.current[property]) {
         clearTimeout(debounceTimers.current[property]);
@@ -80,15 +87,28 @@ export function ElementInspector({ compositionId, elementId }: ElementInspectorP
         }
 
         try {
-          await updateElement({ compositionId, elementId: element!.id, changes });
+          // Use captured elementId instead of element.id to avoid stale closure
+          await updateElement({ compositionId, elementId: currentElementId, changes });
           console.log("[ElementInspector] Updated property:", property, value);
         } catch (error) {
           console.error("[ElementInspector] Error updating:", error);
         }
       }, debounceMs);
     },
-    [compositionId, elementId, updateElement, element]
+    [compositionId, elementId, updateElement] // Removed 'element' from deps
   );
+
+  // Cleanup timers when element changes or component unmounts
+  useEffect(() => {
+    return () => {
+      // Clear all pending timers to prevent memory leaks and stale updates
+      Object.values(debounceTimers.current).forEach(timer => {
+        if (timer) clearTimeout(timer);
+      });
+      debounceTimers.current = {};
+      console.log("[ElementInspector] Cleaned up pending timers");
+    };
+  }, [elementId]);
 
   if (!element) {
     return (
