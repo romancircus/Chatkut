@@ -428,6 +428,26 @@ export const MODEL_ROUTING = {
 
 **Want to use GPT-5?** Just update the model string when available!
 
+### 🚧 Performance Note: TypeScript Support Coming Soon
+
+**Current Status:** Dedalus SDK is currently JavaScript-only. ChatKut works perfectly, but we're awaiting TypeScript support from Dedalus Labs for enhanced performance and type safety.
+
+**What This Means:**
+- ✅ **Tool execution works perfectly** - All editing operations are fully functional
+- ✅ **Multi-model routing works** - Cost optimization is active
+- ⏳ **TypeScript type definitions pending** - Currently using `any` types in some places
+- ⏳ **Enhanced IDE autocomplete coming** - Better DX once TypeScript support lands
+
+**Expected Impact When TypeScript Support Arrives:**
+- 🚀 **Faster editing performance** - Better type inference = faster compilation
+- 🛡️ **Compile-time safety** - Catch errors before runtime
+- 💡 **Better developer experience** - Full autocomplete for all Dedalus APIs
+- 📦 **Smaller bundle size** - Tree-shaking will work more effectively
+
+**Tracking:** Following Dedalus Labs TypeScript roadmap. No ETA yet, but this is a priority feature request from the community.
+
+**Workaround:** We've implemented comprehensive runtime validation in tool definitions to ensure type safety until native TypeScript support is available.
+
 ---
 
 ## 🎨 Tech Stack
