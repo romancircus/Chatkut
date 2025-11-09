@@ -77,6 +77,8 @@ export default defineSchema({
     ),
     // Playback URL (HLS for video, direct URL for images)
     playbackUrl: v.optional(v.string()),
+    // Download URL (MP4 for rendering with OffthreadVideo)
+    downloadUrl: v.optional(v.string()),
     // Duration in seconds (for video/audio)
     duration: v.optional(v.number()),
     // Thumbnail URL

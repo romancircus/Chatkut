@@ -157,6 +157,13 @@ export const handleStreamWebhook = httpAction(async (ctx, request) => {
     });
 
     console.log("[media:webhook] Asset marked ready ✅");
+
+    // Enable MP4 downloads for rendering with Remotion OffthreadVideo
+    // This is done asynchronously after the video is ready
+    console.log("[media:webhook] Requesting MP4 download generation...");
+    await ctx.runAction(api.media.enableMp4Download, {
+      streamId: event.uid,
+    });
   } else if (event.status === "error") {
     console.error("[media:webhook] Video processing failed:", event.uid);
 
@@ -536,5 +543,99 @@ export const deleteAssetRecord = mutation({
   },
   handler: async (ctx, { assetId }) => {
     await ctx.db.delete(assetId);
+  },
+});
+
+/**
+ * Enable MP4 download for a Cloudflare Stream video
+ *
+ * This generates a direct MP4 URL that can be used with Remotion's OffthreadVideo
+ * for rendering (HLS streams don't work with OffthreadVideo).
+ *
+ * @see https://developers.cloudflare.com/stream/viewing-videos/download-videos/
+ */
+export const enableMp4Download = action({
+  args: {
+    streamId: v.string(),
+  },
+  handler: async (ctx, { streamId }): Promise<{ downloadUrl: string }> => {
+    console.log("[media:enableMp4Download] Enabling MP4 download for streamId:", streamId);
+
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_STREAM_API_TOKEN) {
+      throw new Error("Cloudflare credentials not configured");
+    }
+
+    // Request MP4 download generation via Cloudflare Stream API
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/${streamId}/downloads`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${CLOUDFLARE_STREAM_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("[media:enableMp4Download] Cloudflare API error:", {
+        status: response.status,
+        error,
+      });
+      throw new Error(`Failed to enable MP4 download: ${response.status} ${error}`);
+    }
+
+    const data = await response.json();
+    console.log("[media:enableMp4Download] MP4 download response:", data);
+
+    // Extract the download URL from the response
+    // Format: https://customer-<CODE>.cloudflarestream.com/<VIDEO_UID>/downloads/default.mp4
+    const downloadUrl = data.result?.default?.url ||
+      `https://customer-${CLOUDFLARE_ACCOUNT_ID.substring(0, 20)}.cloudflarestream.com/${streamId}/downloads/default.mp4`;
+
+    console.log("[media:enableMp4Download] MP4 URL generated:", downloadUrl);
+
+    // Update the asset with the download URL
+    await ctx.runMutation(internal.media.updateAssetDownloadUrl, {
+      streamId,
+      downloadUrl,
+    });
+
+    return { downloadUrl };
+  },
+});
+
+/**
+ * Update asset with MP4 download URL (internal)
+ */
+export const updateAssetDownloadUrl = internalMutation({
+  args: {
+    streamId: v.string(),
+    downloadUrl: v.string(),
+  },
+  handler: async (ctx, { streamId, downloadUrl }) => {
+    // Find asset by streamId
+    const assets = await ctx.db
+      .query("assets")
+      .filter((q) => q.eq(q.field("streamId"), streamId))
+      .collect();
+
+    if (assets.length === 0) {
+      console.warn("[media:updateDownloadUrl] No asset found for streamId:", streamId);
+      return;
+    }
+
+    const asset = assets[0];
+
+    await ctx.db.patch(asset._id, {
+      downloadUrl,
+      updatedAt: Date.now(),
+    });
+
+    console.log("[media:updateDownloadUrl] Updated asset with download URL:", {
+      assetId: asset._id,
+      downloadUrl,
+    });
   },
 });

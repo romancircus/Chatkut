@@ -88,9 +88,12 @@ const RenderElement: React.FC<{ element: CompositionElement }> = ({
 function renderElementContent(element: CompositionElement): React.ReactNode {
   switch (element.type) {
     case "video":
+      // Use MP4 download URL for rendering (OffthreadVideo requires MP4, not HLS)
+      // Fall back to src if downloadUrl is not available
+      const videoSrc = element.properties.downloadUrl || element.properties.src;
       return (
         <OffthreadVideo
-          src={element.properties.src}
+          src={videoSrc}
           style={{
             width: element.properties.width || "100%",
             height: element.properties.height || "auto",

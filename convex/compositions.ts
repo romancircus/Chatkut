@@ -470,7 +470,10 @@ export const addElement = mutation({
       from: startFrame,
       durationInFrames: elementDuration,
       properties: {
+        // Use HLS URL for preview (browser playback)
         src: asset.playbackUrl,
+        // Use MP4 URL for rendering (OffthreadVideo requires MP4)
+        downloadUrl: asset.downloadUrl,
         volume: 1,
       },
       label: label || asset.filename,
