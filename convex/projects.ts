@@ -58,7 +58,6 @@ export const create = mutation({
     console.log("[Convex] Creating default composition for project...");
     const compositionId = await ctx.db.insert("compositions", {
       projectId,
-      name: "Main Composition",
       ir: {
         id: `comp_${now}`,
         version: 1,
@@ -67,11 +66,12 @@ export const create = mutation({
           height: 1080,
           fps: 30,
           durationInFrames: 900, // 30 seconds at 30fps
-          backgroundColor: "#000000",
         },
         elements: [],
+        patches: [],
       },
-      remotionCode: null,
+      code: "",
+      version: 1,
       createdAt: now,
       updatedAt: now,
     });
@@ -135,7 +135,6 @@ export const createDefaultComposition = mutation({
 
     const compositionId = await ctx.db.insert("compositions", {
       projectId,
-      name: "Main Composition",
       ir: {
         id: `comp_${now}`,
         version: 1,
@@ -144,11 +143,12 @@ export const createDefaultComposition = mutation({
           height: 1080,
           fps: 30,
           durationInFrames: 900, // 30 seconds at 30fps
-          backgroundColor: "#000000",
         },
         elements: [],
+        patches: [],
       },
-      remotionCode: null,
+      code: "",
+      version: 1,
       createdAt: now,
       updatedAt: now,
     });

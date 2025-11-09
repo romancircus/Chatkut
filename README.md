@@ -255,6 +255,52 @@ AI: "Rendering 10 videos (3840×2160)... Cost: $4.88, ETA 6 mins"
 
 ---
 
+## 🎬 Live Demo - Proof of Concept
+
+**Watch the AI translate natural language into video edits in real-time:**
+
+[![ChatKut Demo](https://customer-g5dh79a3hbwexxdu.cloudflarestream.com/71f3d1cdb6a3eba91c4a75ef29f4f29c/thumbnails/thumbnail.jpg)](https://customer-g5dh79a3hbwexxdu.cloudflarestream.com/71f3d1cdb6a3eba91c4a75ef29f4f29c/watch)
+
+**[▶️ Watch Demo Video](https://customer-g5dh79a3hbwexxdu.cloudflarestream.com/71f3d1cdb6a3eba91c4a75ef29f4f29c/watch)** | [HLS Stream](https://customer-g5dh79a3hbwexxdu.cloudflarestream.com/71f3d1cdb6a3eba91c4a75ef29f4f29c/manifest/video.m3u8)
+
+This demo showcases the **core innovation** of ChatKut: an LLM (Claude Sonnet 4.5) understanding user intent and translating it into precise video editing operations.
+
+**What you're seeing:**
+1. **User types natural language commands** - "Add the bigfoot video", "Add text saying 'Big Foot spotted!'", "Zoom into the gorilla"
+2. **AI analyzes the request** - Understands context from composition state and available assets
+3. **Tool execution happens** - AI calls specific editing tools (add_video_element, add_text_element, add_animation)
+4. **UI updates instantly** - Remotion preview reflects changes in real-time via Convex reactivity
+5. **Conversation continues** - AI confirms actions and suggests next steps
+
+**Key Technical Achievements Demonstrated:**
+- ✅ **Multi-turn tool execution** - AI makes multiple edits in one response
+- ✅ **Context-aware editing** - AI remembers what assets are available and what's in the timeline
+- ✅ **Deterministic operations** - "Add text at the top" consistently places text at y=100px
+- ✅ **Animation generation** - Natural language like "zoom in" creates proper scale keyframes with easing
+- ✅ **Real-time preview** - Changes appear immediately without manual refresh
+
+This is a **proof of concept** showing that LLMs can reliably translate creative intent into code-based video edits when given:
+1. **Structured tools** - Clear function signatures with validation
+2. **Rich context** - Current composition state, available assets, technical constraints
+3. **Deterministic execution** - Tools that produce predictable, reversible results
+
+**Why This Matters:**
+Traditional AI video tools generate entire compositions from scratch on each edit, making them:
+- Non-deterministic ("make the second clip louder" might target different clips)
+- Slow (full regeneration takes 10-30 seconds)
+- Expensive (large token costs for regenerating everything)
+- Not undoable (lost state between generations)
+
+ChatKut's **Plan-Execute-Patch** approach with tool-based editing solves all of these:
+- Deterministic (selectors guarantee correct element)
+- Fast (only changed properties are updated)
+- Cheap (~$0.02 per edit with multi-model routing)
+- Fully reversible (every edit creates a patch for undo/redo)
+
+**Current Status:** This demo represents Phase 1 completion (chat-to-execution pipeline working end-to-end). Phase 2 will add timeline UI, advanced effects, and multi-user collaboration.
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites

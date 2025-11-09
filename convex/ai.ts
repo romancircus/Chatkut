@@ -1,26 +1,27 @@
 /**
  * AI Actions for ChatKut
  *
- * Handles chat responses, code generation, and edit plan creation
- * using multi-model routing for optimal cost/quality balance.
+ * Handles chat responses with tool execution, code generation,
+ * and edit plan creation using Anthropic Claude API.
  */
 
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
+import Anthropic from "@anthropic-ai/sdk";
+import { COMPOSITION_TOOLS } from "@/lib/dedalus/tools";
 import {
-  generateChatResponse,
+  buildChatSystemPrompt,
   generateEditPlan as generateEditPlanViaDedalus,
   generateRemotionCode as generateRemotionCodeViaDedalus,
 } from "@/lib/dedalus/client";
 import type { EditPlan } from "@/types/composition-ir";
 
 // Get Anthropic API key from environment
-// TEMPORARY: Using Anthropic directly until Dedalus TypeScript SDK is production-ready
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 /**
- * Send a chat message and get AI response
+ * Send a chat message and get AI response with tool execution
  */
 export const sendChatMessage = action({
   args: {
@@ -31,17 +32,14 @@ export const sendChatMessage = action({
     messageId: any;
     content: string;
     model: string;
+    toolsExecuted: number;
   }> => {
+    console.log("[ai:sendChatMessage] Processing message:", message.substring(0, 100) + "...");
+
     // TODO: Re-enable authentication after testing
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) {
-    //   throw new Error("Not authenticated");
-    // }
-    // const userId = identity.subject as any;
+    const userId = "temp_user_1" as any;
 
-    const userId = "temp_user_1" as any; // Temporary for testing
-
-    // Save user message
+    // 1. Save user message
     await ctx.runMutation(api.ai.saveChatMessage, {
       projectId,
       userId,
@@ -49,56 +47,242 @@ export const sendChatMessage = action({
       content: message,
     });
 
-    // Validate API key
+    // 2. Validate API key
     if (!ANTHROPIC_API_KEY) {
       throw new Error(
         "ANTHROPIC_API_KEY not configured. Run: npx convex env set ANTHROPIC_API_KEY \"sk-ant-your-key\""
       );
     }
 
-    // Get project context (composition, assets, etc.)
+    // 3. Get project context (composition, assets, etc.)
     const project = await ctx.runQuery(api.ai.getProjectContext, { projectId });
+    console.log("[ai:sendChatMessage] Project context loaded:", {
+      hasComposition: !!project?.composition,
+      assetCount: project?.assets?.length || 0,
+      elementCount: project?.composition?.ir?.elements?.length || 0,
+    });
 
-    // Get chat history
-    const history = await ctx.runQuery(api.ai.getChatMessages, { projectId, limit: 10 });
+    // 4. Build system prompt with composition context
+    const systemPrompt = buildChatSystemPrompt({
+      assets: project?.assets || [],
+      composition: project?.composition || null,
+    });
 
-    // Generate AI response using Anthropic SDK
-    const response = await generateChatResponse(
-      ANTHROPIC_API_KEY,
-      message,
-      {
-        assets: project?.assets || [],
-        composition: project?.composition || null,
-        history: history || [],
+    // 5. Initialize Anthropic client
+    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+
+    // 6. Build initial messages array
+    const messages: Anthropic.MessageParam[] = [
+      { role: "user", content: message }
+    ];
+
+    // 7. Make initial API call with tools
+    console.log("[ai:sendChatMessage] Calling Anthropic API with", COMPOSITION_TOOLS.length, "tools");
+    let response = await client.messages.create({
+      model: "claude-sonnet-4-5",
+      system: systemPrompt,
+      messages,
+      tools: COMPOSITION_TOOLS,
+      max_tokens: 2000,
+    });
+
+    let toolsExecuted = 0;
+    const maxToolIterations = 3; // Prevent infinite loops
+    let iterations = 0;
+
+    // 8. Process tool use (loop for multi-turn if needed)
+    while (response.stop_reason === "tool_use" && iterations < maxToolIterations) {
+      iterations++;
+      console.log(`[ai:sendChatMessage] Tool use iteration ${iterations}`);
+
+      // Extract tool use blocks
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+      );
+
+      console.log(`[ai:sendChatMessage] Found ${toolUseBlocks.length} tool use blocks`);
+
+      // Execute each tool and collect results
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+      for (const toolUse of toolUseBlocks) {
+        console.log(`[ai:sendChatMessage] Executing tool: ${toolUse.name}`, toolUse.input);
+
+        try {
+          const result = await executeTool(ctx, toolUse.name, toolUse.input, project);
+          toolsExecuted++;
+
+          console.log(`[ai:sendChatMessage] Tool ${toolUse.name} executed successfully:`, result);
+
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: JSON.stringify(result),
+          });
+        } catch (error) {
+          console.error(`[ai:sendChatMessage] Tool execution error for ${toolUse.name}:`, error);
+
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error)
+            }),
+            is_error: true,
+          });
+        }
       }
-    );
 
-    // Save assistant response
+      // 9. Send tool results back to Claude
+      messages.push({
+        role: "assistant",
+        content: response.content,
+      });
+      messages.push({
+        role: "user",
+        content: toolResults,
+      });
+
+      // 10. Get next response from Claude
+      console.log("[ai:sendChatMessage] Sending tool results back to Claude");
+      response = await client.messages.create({
+        model: "claude-sonnet-4-5",
+        system: systemPrompt,
+        messages,
+        tools: COMPOSITION_TOOLS,
+        max_tokens: 2000,
+      });
+    }
+
+    // 11. Extract final text response
+    const finalText = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map(block => block.text)
+      .join("\n");
+
+    console.log("[ai:sendChatMessage] Final response:", finalText.substring(0, 150) + "...");
+    console.log("[ai:sendChatMessage] Tools executed:", toolsExecuted);
+
+    // 12. Save assistant response
     const assistantMessageId = await ctx.runMutation(api.ai.saveChatMessage, {
       projectId,
       userId,
       role: "assistant",
-      content: response.text,
+      content: finalText,
     });
 
-    // Track AI usage
+    // 13. Track AI usage
     await ctx.runMutation(api.ai.trackAIUsage, {
       userId,
       projectId,
-      task: "chat-response",
+      task: "chat-response-with-tools",
       model: response.model,
-      provider: response.provider,
-      tokenUsage: response.tokens,
-      cost: response.cost,
+      provider: "anthropic",
+      tokenUsage: {
+        input: response.usage.input_tokens,
+        output: response.usage.output_tokens,
+        total: response.usage.input_tokens + response.usage.output_tokens,
+      },
     });
 
     return {
       messageId: assistantMessageId,
-      content: response.text,
+      content: finalText,
       model: response.model,
+      toolsExecuted,
     };
   },
 });
+
+/**
+ * Execute a tool by name
+ * Maps tool calls to Convex mutations
+ */
+async function executeTool(
+  ctx: any,
+  toolName: string,
+  input: any,
+  project: any
+): Promise<any> {
+  const compositionId = project?.composition?._id;
+
+  if (!compositionId) {
+    throw new Error("No composition found for this project. Please create a composition first.");
+  }
+
+  switch (toolName) {
+    case "add_video_element":
+      const videoElementId = await ctx.runMutation(api.compositions.addElement, {
+        compositionId,
+        assetId: input.assetId,
+        from: input.from,
+        durationInFrames: input.durationInFrames,
+        label: input.label,
+      });
+      return {
+        success: true,
+        elementId: videoElementId,
+        message: `Added video element with ID: ${videoElementId}`
+      };
+
+    case "add_text_element":
+      const textElementId = await ctx.runMutation(api.compositions.addTextElement, {
+        compositionId,
+        text: input.text,
+        from: input.from,
+        durationInFrames: input.durationInFrames,
+        x: input.x,
+        y: input.y,
+        fontSize: input.fontSize,
+        color: input.color,
+        fontWeight: input.fontWeight,
+        backgroundColor: input.backgroundColor,
+        label: input.label,
+      });
+      return {
+        success: true,
+        elementId: textElementId,
+        message: `Added text element: "${input.text}"`
+      };
+
+    case "add_animation":
+      await ctx.runMutation(api.compositions.addAnimation, {
+        compositionId,
+        elementId: input.elementId,
+        property: input.property,
+        keyframes: input.keyframes,
+        easing: input.easing,
+      });
+      return {
+        success: true,
+        message: `Added ${input.property} animation to element ${input.elementId}`
+      };
+
+    case "update_element_properties":
+      await ctx.runMutation(api.compositions.updateElement, {
+        compositionId,
+        elementId: input.elementId,
+        changes: { properties: input.properties },
+      });
+      return {
+        success: true,
+        message: `Updated properties for element ${input.elementId}`
+      };
+
+    case "delete_element":
+      await ctx.runMutation(api.compositions.deleteElement, {
+        compositionId,
+        elementId: input.elementId,
+      });
+      return {
+        success: true,
+        message: `Deleted element ${input.elementId}`
+      };
+
+    default:
+      throw new Error(`Unknown tool: ${toolName}`);
+  }
+}
 
 /**
  * Generate an edit plan from user message

@@ -74,6 +74,9 @@ export function RemotionPreview({
         inputProps={{
           composition: composition.ir,
         }}
+        clickToPlay
+        showVolumeControls
+        acknowledgeRemotionLicense
       />
     </div>
   );
@@ -310,15 +313,52 @@ function interpolateKeyframes(
     return endKeyframe.value;
   }
 
-  const { interpolate } = require("remotion");
+  const { interpolate, Easing } = require("remotion");
+
+  // Map string easing values to Remotion Easing functions
+  // Based on Remotion documentation: https://www.remotion.dev/docs/easing
+  const getEasingFunction = (easingString: string) => {
+    switch (easingString) {
+      case "linear":
+        return Easing.linear;
+      case "ease":
+        return Easing.ease;
+      case "ease-in":
+        return Easing.in(Easing.ease);
+      case "ease-out":
+        return Easing.out(Easing.ease);
+      case "ease-in-out":
+        return Easing.inOut(Easing.ease);
+      default:
+        return undefined;
+    }
+  };
+
+  // Get easing function if easing string is provided
+  const easingFn = easing ? getEasingFunction(easing) : undefined;
 
   // Interpolate between keyframes
+  if (easingFn) {
+    return interpolate(
+      frame,
+      [startKeyframe.frame, endKeyframe.frame],
+      [startKeyframe.value, endKeyframe.value],
+      {
+        easing: easingFn,
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      }
+    );
+  }
+
+  // No easing - omit the easing property entirely
   return interpolate(
     frame,
     [startKeyframe.frame, endKeyframe.frame],
     [startKeyframe.value, endKeyframe.value],
     {
-      easing: easing === "ease-in" ? "easeIn" : easing === "ease-out" ? "easeOut" : undefined,
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
     }
   );
 }

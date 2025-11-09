@@ -617,6 +617,196 @@ export const deleteElement = mutation({
 });
 
 /**
+ * Add text element to composition
+ */
+export const addTextElement = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    text: v.string(),
+    from: v.number(),
+    durationInFrames: v.number(),
+    x: v.optional(v.number()),
+    y: v.optional(v.number()),
+    fontSize: v.optional(v.number()),
+    color: v.optional(v.string()),
+    fontWeight: v.optional(v.string()),
+    backgroundColor: v.optional(v.string()),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const composition = await ctx.db.get(args.compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    // Validate frame ranges
+    if (args.from < 0) {
+      throw new Error("Start frame must be non-negative");
+    }
+
+    if (args.durationInFrames <= 0) {
+      throw new Error("Duration must be positive");
+    }
+
+    const endFrame = args.from + args.durationInFrames;
+    if (endFrame > composition.ir.metadata.durationInFrames) {
+      console.warn(`[addTextElement] Text extends beyond composition (${endFrame} > ${composition.ir.metadata.durationInFrames})`);
+    }
+
+    // Validate color format if provided
+    if (args.color && !/^#[0-9A-Fa-f]{6}$/.test(args.color)) {
+      throw new Error("Color must be in hex format (e.g., #ffffff)");
+    }
+
+    if (args.backgroundColor && !/^#[0-9A-Fa-f]{6}$/.test(args.backgroundColor)) {
+      throw new Error("Background color must be in hex format (e.g., #000000)");
+    }
+
+    // Validate font size
+    if (args.fontSize !== undefined && (args.fontSize <= 0 || args.fontSize > 500)) {
+      throw new Error("Font size must be between 1 and 500 pixels");
+    }
+
+    // Create new text element
+    const newElement = {
+      id: generateElementId(),
+      type: "text" as const,
+      from: args.from,
+      durationInFrames: args.durationInFrames,
+      properties: {
+        text: args.text,
+        x: args.x ?? composition.ir.metadata.width / 2, // Default: center horizontally
+        y: args.y ?? composition.ir.metadata.height / 2, // Default: center vertically
+        fontSize: args.fontSize ?? 48,
+        color: args.color ?? "#ffffff",
+        fontWeight: args.fontWeight ?? "normal",
+        backgroundColor: args.backgroundColor,
+        fontFamily: "Arial",
+        textAlign: "center" as const,
+      },
+      label: args.label || `Text: ${args.text.substring(0, 20)}${args.text.length > 20 ? '...' : ''}`,
+    };
+
+    const updatedIR = {
+      ...composition.ir,
+      elements: [...composition.ir.elements, newElement],
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(args.compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`[addTextElement] Added text element ${newElement.id}: "${args.text}" (from: ${args.from}, duration: ${args.durationInFrames})`);
+    return newElement.id;
+  },
+});
+
+/**
+ * Add animation to an existing element
+ */
+export const addAnimation = mutation({
+  args: {
+    compositionId: v.id("compositions"),
+    elementId: v.string(),
+    property: v.string(),
+    keyframes: v.array(v.object({
+      frame: v.number(),
+      value: v.number(),
+    })),
+    easing: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const composition = await ctx.db.get(args.compositionId);
+    if (!composition) {
+      throw new Error("Composition not found");
+    }
+
+    // Find the element
+    const element = composition.ir.elements.find((el: any) => el.id === args.elementId);
+    if (!element) {
+      throw new Error(`Element ${args.elementId} not found in composition`);
+    }
+
+    // Validate keyframes
+    if (args.keyframes.length < 2) {
+      throw new Error("Animation requires at least 2 keyframes");
+    }
+
+    // Validate keyframe frame numbers are within element duration
+    const invalidKeyframes = args.keyframes.filter(
+      (kf) => kf.frame < 0 || kf.frame > element.durationInFrames
+    );
+    if (invalidKeyframes.length > 0) {
+      throw new Error(
+        `Keyframe frames must be between 0 and ${element.durationInFrames} (element duration). Invalid frames: ${invalidKeyframes.map(kf => kf.frame).join(", ")}`
+      );
+    }
+
+    // Validate property name
+    const validProperties = [
+      "opacity", "scale", "scaleX", "scaleY", "x", "y",
+      "rotation", "rotateX", "rotateY", "translateX", "translateY",
+      "skewX", "skewY"
+    ];
+    if (!validProperties.includes(args.property)) {
+      throw new Error(
+        `Invalid animation property: ${args.property}. Valid properties: ${validProperties.join(", ")}`
+      );
+    }
+
+    // Validate property values based on type
+    if (args.property === "opacity") {
+      const invalidValues = args.keyframes.filter(kf => kf.value < 0 || kf.value > 1);
+      if (invalidValues.length > 0) {
+        throw new Error("Opacity values must be between 0 and 1");
+      }
+    }
+
+    // Validate easing
+    const validEasings = ["linear", "ease-in", "ease-out", "ease-in-out"];
+    if (args.easing && !validEasings.includes(args.easing)) {
+      throw new Error(
+        `Invalid easing: ${args.easing}. Valid easings: ${validEasings.join(", ")}`
+      );
+    }
+
+    // Create animation object
+    const newAnimation = {
+      property: args.property,
+      keyframes: args.keyframes,
+      easing: args.easing || "linear",
+    };
+
+    // Update element with new animation
+    const updatedIR = {
+      ...composition.ir,
+      elements: composition.ir.elements.map((el: any) => {
+        if (el.id !== args.elementId) return el;
+
+        return {
+          ...el,
+          animations: [...(el.animations || []), newAnimation],
+        };
+      }),
+      version: composition.ir.version + 1,
+    };
+
+    await ctx.db.patch(args.compositionId, {
+      ir: updatedIR,
+      version: composition.version + 1,
+      updatedAt: Date.now(),
+    });
+
+    console.log(
+      `[addAnimation] Added ${args.property} animation to element ${args.elementId} with ${args.keyframes.length} keyframes`
+    );
+  },
+});
+
+/**
  * Reorder elements in composition
  */
 export const reorderElements = mutation({

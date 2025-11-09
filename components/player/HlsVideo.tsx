@@ -43,6 +43,11 @@ export const HlsVideo: React.FC<RemotionVideoProps> = ({ src, ...props }) => {
     });
 
     hls.on(Hls.Events.ERROR, (event, data) => {
+      // Ignore non-fatal level switch errors (common with Cloudflare Stream)
+      if (data.details === 'levelSwitchError' && !data.fatal) {
+        return;
+      }
+
       console.error('[HlsVideo] HLS error:', data);
       if (data.fatal) {
         switch (data.type) {
