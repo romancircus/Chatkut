@@ -53,6 +53,31 @@ export const create = mutation({
     });
 
     console.log("[Convex] Project created with ID:", projectId);
+
+    // Automatically create a default composition for the project
+    console.log("[Convex] Creating default composition for project...");
+    const compositionId = await ctx.db.insert("compositions", {
+      projectId,
+      name: "Main Composition",
+      ir: {
+        id: `comp_${now}`,
+        version: 1,
+        metadata: {
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          durationInFrames: 900, // 30 seconds at 30fps
+          backgroundColor: "#000000",
+        },
+        elements: [],
+      },
+      remotionCode: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    console.log("[Convex] Default composition created with ID:", compositionId);
+
     return projectId;
   },
 });
@@ -93,5 +118,42 @@ export const deleteProject = mutation({
   handler: async (ctx, { projectId }) => {
     // TODO: Also delete related compositions, assets, chat messages
     await ctx.db.delete(projectId);
+  },
+});
+
+/**
+ * Create a default composition for an existing project (migration helper)
+ */
+export const createDefaultComposition = mutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, { projectId }) => {
+    console.log("[Convex] Creating default composition for existing project:", projectId);
+
+    const now = Date.now();
+
+    const compositionId = await ctx.db.insert("compositions", {
+      projectId,
+      name: "Main Composition",
+      ir: {
+        id: `comp_${now}`,
+        version: 1,
+        metadata: {
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          durationInFrames: 900, // 30 seconds at 30fps
+          backgroundColor: "#000000",
+        },
+        elements: [],
+      },
+      remotionCode: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    console.log("[Convex] Default composition created with ID:", compositionId);
+    return compositionId;
   },
 });
