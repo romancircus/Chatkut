@@ -279,6 +279,20 @@ async function executeTool(
         message: `Deleted element ${input.elementId}`
       };
 
+    case "move_element":
+      await ctx.runMutation(api.compositions.updateElement, {
+        compositionId,
+        elementId: input.elementId,
+        changes: {
+          from: input.from,
+          durationInFrames: input.durationInFrames,
+        },
+      });
+      return {
+        success: true,
+        message: `Moved element ${input.elementId}${input.from !== undefined ? ` to frame ${input.from}` : ''}${input.durationInFrames !== undefined ? `, duration: ${input.durationInFrames} frames` : ''}`
+      };
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }

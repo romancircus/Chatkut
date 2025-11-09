@@ -216,6 +216,36 @@ This permanently removes the element from the timeline.`,
       },
       required: ["elementId"]
     }
+  },
+  {
+    name: "move_element",
+    description: `Move an element to a different position on the timeline or change its duration. Use this for repositioning, trimming, or extending elements.
+
+Examples:
+- "Move the intro video to start at 5 seconds"
+- "Make the text appear 2 seconds later"
+- "Trim the video to 10 seconds long"
+- "Extend the text to last the whole video"
+
+This modifies the element's timing on the timeline without changing its content or properties.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        elementId: {
+          type: "string",
+          description: "ID of element to move (from composition context)"
+        },
+        from: {
+          type: "number",
+          description: "New start frame. Calculate using: seconds * fps (e.g., 5 seconds at 30fps = 150 frames). Only provide if repositioning the element."
+        },
+        durationInFrames: {
+          type: "number",
+          description: "New duration in frames. Only provide if changing how long the element appears on screen (trimming or extending)."
+        }
+      },
+      required: ["elementId"]
+    }
   }
 ];
 
