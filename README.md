@@ -1039,13 +1039,4 @@ If ChatKut saves you time and money, give it a star! ⭐
 
 ---
 
-## 🔗 Links
-
-- **Live Demo:** [Coming Soon]
-- **Documentation:** [docs.chatkut.com](https://docs.chatkut.com) (Coming Soon)
-- **Twitter:** [@chatkut](https://twitter.com/chatkut) (Coming Soon)
-- **Discord:** [Join Community](https://discord.gg/chatkut) (Coming Soon)
-
----
-
 **Built by creators, for creators.** 🎬✨
